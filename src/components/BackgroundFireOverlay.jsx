@@ -3,9 +3,9 @@ import { useEasterEggTrigger } from "../hooks/useEasterEggTrigger.js";
 import IgnitionAttemptParticles from "./IgnitionAttemptParticles.jsx";
 
 const FIRE_VARIANTS = [
-  { label: "fire", webm: "/assets/fire.webm", mp4: "/assets/fire.mp4" },
-  { label: "fire1", webm: "/assets/fire1.webm", mp4: "/assets/fire1.mp4" },
-  { label: "fire2", webm: "/assets/fire2.webm", mp4: "/assets/fire2.mp4" },
+  { label: "fire", src: "/assets/fire.mp4" },
+  { label: "fire1", src: "/assets/fire1.mp4" },
+  { label: "fire2", src: "/assets/fire2.mp4" },
 ];
 
 const REVEAL_DURATION_MS = 2600;
@@ -176,15 +176,15 @@ export default function BackgroundFireOverlay() {
                 Fire clip
               </span>
               <select
-                value={fireVariant.webm}
+                value={fireVariant.src}
                 onChange={(e) => {
-                  const next = FIRE_VARIANTS.find((v) => v.webm === e.target.value) ?? FIRE_VARIANTS[0];
+                  const next = FIRE_VARIANTS.find((v) => v.src === e.target.value) ?? FIRE_VARIANTS[0];
                   setFireVariant(next);
                 }}
                 className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px]"
               >
                 {FIRE_VARIANTS.map((v) => (
-                  <option key={v.webm} value={v.webm}>
+                  <option key={v.src} value={v.src}>
                     {v.label}
                   </option>
                 ))}
@@ -251,11 +251,8 @@ export default function BackgroundFireOverlay() {
             filter: "saturate(1.1) contrast(1.05)",
           }}
           aria-hidden
-        >
-          {/* MP4 first for iOS Safari (no WebM support); WebM for smaller size elsewhere */}
-          <source src={fireVariant.mp4} type="video/mp4" />
-          <source src={fireVariant.webm} type="video/webm" />
-        </video>
+          src={fireVariant.src}
+        />
         {/* Dark overlay to keep text readable while still letting ignition feel strong */}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
       </div>
