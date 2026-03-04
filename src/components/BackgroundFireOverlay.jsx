@@ -3,15 +3,9 @@ import { useEasterEggTrigger } from "../hooks/useEasterEggTrigger.js";
 import IgnitionAttemptParticles from "./IgnitionAttemptParticles.jsx";
 
 const FIRE_VARIANTS = [
-  { label: "fire", src: "/assets/fire.webm" },
-  { label: "fire1", src: "/assets/fire1.webm" },
-  { label: "fire2", src: "/assets/fire2.webm" },
-  { label: "fire3", src: "/assets/fire3.webm" },
-  // mp4 variants, in case some browsers prefer them.
-  { label: "fire (mp4)", src: "/assets/fire.mp4" },
-  { label: "fire1 (mp4)", src: "/assets/fire1.mp4" },
-  { label: "fire2 (mp4)", src: "/assets/fire2.mp4" },
-  { label: "fire3 (mp4)", src: "/assets/fire3.mp4" },
+  { label: "fire", webm: "/assets/fire.webm", mp4: "/assets/fire.mp4" },
+  { label: "fire1", webm: "/assets/fire1.webm", mp4: "/assets/fire1.mp4" },
+  { label: "fire2", webm: "/assets/fire2.webm", mp4: "/assets/fire2.mp4" },
 ];
 
 const REVEAL_DURATION_MS = 2600;
@@ -29,7 +23,7 @@ export default function BackgroundFireOverlay() {
   } = useEasterEggTrigger();
 
   const videoRef = useRef(null);
-  const [fireVariant, setFireVariant] = useState(FIRE_VARIANTS[0].src);
+  const [fireVariant, setFireVariant] = useState(FIRE_VARIANTS[0]);
   const [revealRadius, setRevealRadius] = useState(0);
   const revealStartRef = useRef(null);
   const rafRef = useRef(null);
@@ -80,18 +74,19 @@ export default function BackgroundFireOverlay() {
     };
   }, [hasVideoIgnited, ignitionPoint]);
 
-  // When a different fire clip is chosen while the fire is already lit,
-  // restart playback from the beginning so we don't freeze on the first frame.
+  // When a different fire clip is chosen, load the new source (so all 3 clips don’t play the same file).
+  // If the fire is already lit, restart playback once the new source is ready.
   useEffect(() => {
-    if (!hasVideoIgnited) return;
     const video = videoRef.current;
     if (!video) return;
-    try {
+    video.load();
+    if (!hasVideoIgnited) return;
+    const onReady = () => {
       video.currentTime = 0;
       video.play().catch(() => {});
-    } catch {
-      // ignore autoplay policy errors
-    }
+    };
+    video.addEventListener("loadeddata", onReady, { once: true });
+    return () => video.removeEventListener("loadeddata", onReady);
   }, [fireVariant, hasVideoIgnited]);
 
   const handleOverlayClick = useCallback(
@@ -107,7 +102,12 @@ export default function BackgroundFireOverlay() {
 
       // Third click: previous clickCount was 2 before this click.
       if (!hasIgnited && clickCount === 2) {
-        // Let the final attempt visually play out, then ignite the fire reveal.
+        // Start playback immediately while still inside the user gesture (required on iOS).
+        const video = videoRef.current;
+        if (video) {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        }
         setHasVideoIgnited(false);
         setTimeout(() => setHasVideoIgnited(true), 650);
       }
@@ -176,14 +176,15 @@ export default function BackgroundFireOverlay() {
                 Fire clip
               </span>
               <select
-                value={fireVariant}
+                value={fireVariant.webm}
                 onChange={(e) => {
-                  setFireVariant(e.target.value);
+                  const next = FIRE_VARIANTS.find((v) => v.webm === e.target.value) ?? FIRE_VARIANTS[0];
+                  setFireVariant(next);
                 }}
                 className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px]"
               >
                 {FIRE_VARIANTS.map((v) => (
-                  <option key={v.src} value={v.src}>
+                  <option key={v.webm} value={v.webm}>
                     {v.label}
                   </option>
                 ))}
@@ -231,7 +232,6 @@ export default function BackgroundFireOverlay() {
       >
         <video
           ref={videoRef}
-          src={fireVariant}
           loop
           muted
           playsInline
@@ -251,7 +251,11 @@ export default function BackgroundFireOverlay() {
             filter: "saturate(1.1) contrast(1.05)",
           }}
           aria-hidden
-        />
+        >
+          {/* MP4 first for iOS Safari (no WebM support); WebM for smaller size elsewhere */}
+          <source src={fireVariant.mp4} type="video/mp4" />
+          <source src={fireVariant.webm} type="video/webm" />
+        </video>
         {/* Dark overlay to keep text readable while still letting ignition feel strong */}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
       </div>
