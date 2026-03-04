@@ -1,0 +1,71 @@
+{
+  "hero": {
+    "name": "Akshat Kumar Shahi",
+    "tagline": "",
+    "subheader": ""
+  },
+  "contact": {
+    "email": "Akshatshahi2006@gmail.com"
+  },
+  "socials": [
+    {
+      "id": "linkedin",
+      "label": "LinkedIn",
+      "url": "https://www.linkedin.com/in/akshat-shahi-651684217/"
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "url": "https://github.com/Chikki06"
+    },
+    {
+      "id": "website",
+      "label": "Website",
+      "url": "https://chikki06.github.io/"
+    }
+  ],
+  "skills": {
+    "languages": [
+      "Python",
+      "C++",
+      "C",
+      "TypeScript",
+      "JavaScript",
+      "Java",
+      "Rust",
+      "SQL"
+    ],
+    "mlAi": [
+      "PyTorch",
+      "TensorFlow",
+      "ONNX",
+      "TensorRT",
+      "Computer Vision",
+      "Deep Learning"
+    ],
+    "toolsPlatforms": [
+      "Flask",
+      "Firebase",
+      "React",
+      "Docker",
+      "Linux",
+      "AWS",
+      "Azure",
+      "Git"
+    ],
+    "spokenLanguages": [
+      {
+        "name": "English",
+        "level": "Fluent"
+      },
+      {
+        "name": "Hindi",
+        "level": "Fluent"
+      },
+      {
+        "name": "German",
+        "level": "Professional"
+      }
+    ]
+  }
+}
