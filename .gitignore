@@ -29,6 +29,7 @@ pnpm-debug.log*
 *.swp
 *.swo
 *~
+prompt.md
 
 # Keep these in repo: public/, content/, src/, index.html, package.json, vite.config.js, etc.
 # Asset endpoints (must live under public/): /favicon.svg, /assets/, /pdfs/, /timeline/, /images/
