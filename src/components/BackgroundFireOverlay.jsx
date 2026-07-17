@@ -3,9 +3,9 @@ import { useEasterEggTrigger } from "../hooks/useEasterEggTrigger.js";
 import IgnitionAttemptParticles from "./IgnitionAttemptParticles.jsx";
 
 const FIRE_VARIANTS = [
-  { label: "fire", src: "/assets/fire.mp4" },
-  { label: "fire1", src: "/assets/fire1.mp4" },
-  { label: "fire2", src: "/assets/fire2.mp4" },
+  { label: "demo1", src: "/assets/demo1.mp4" },
+  { label: "demo2", src: "/assets/demo2.mp4" },
+  { label: "demo3", src: "/assets/demo3.mp4" },
 ];
 
 const REVEAL_DURATION_MS = 2600;
@@ -34,6 +34,7 @@ export default function BackgroundFireOverlay() {
   const [isRevealing, setIsRevealing] = useState(false);
   const [revealProgress, setRevealProgress] = useState(0);
   const [hasSettled, setHasSettled] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState(null);
 
   const resetLocal = useCallback(() => {
     setRevealRadius(0);
@@ -197,10 +198,17 @@ export default function BackgroundFireOverlay() {
       {/* Click capture overlay (only when armed and not yet ignited) */}
       {isCapturing && (
         <div
-          className="fixed inset-0 z-20 cursor-crosshair"
-          style={{ touchAction: "none" }}
+          className="fixed inset-0 z-20"
+          style={{
+            touchAction: "none",
+            cursor: "none",
+          }}
+          onPointerMove={(event) => setCursorPosition({ x: event.clientX, y: event.clientY })}
+          onPointerLeave={() => setCursorPosition(null)}
           onClick={handleOverlayClick}
-        />
+        >
+          {cursorPosition && <img src="/assets/I.png" alt="" aria-hidden="true" className="pointer-events-none fixed z-30 h-10 w-10 -translate-x-1/2 -translate-y-1/2 object-contain" style={{ left: cursorPosition.x, top: cursorPosition.y }} />}
+        </div>
       )}
 
       {/* We intentionally skip rendering preIgnitionSparks here to avoid an extra yellow dot.

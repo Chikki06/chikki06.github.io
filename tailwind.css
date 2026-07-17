@@ -1,5 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=Indie+Flower&display=swap");
 @import "tailwindcss";
 @import "tailwindcss/utilities";
+
+html:has(.scroll-story),
+body:has(.scroll-story) {
+  scrollbar-width: none;
+}
+
+html:has(.scroll-story)::-webkit-scrollbar,
+body:has(.scroll-story)::-webkit-scrollbar {
+  display: none;
+}
 
 @keyframes fade-spark {
   from {

@@ -1,5 +1,5 @@
-import Portfolio from "./components/Portfolio.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
+import ScrollStory from "./components/ScrollStory.jsx";
 
 export default function App() {
   const path = window.location.pathname;
@@ -24,5 +24,5 @@ export default function App() {
     );
   }
 
-  return <Portfolio />;
+  return <ScrollStory />;
 }

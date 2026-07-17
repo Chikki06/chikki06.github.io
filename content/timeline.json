@@ -7,8 +7,12 @@
     "title": "B.S. in Computer Science, Mathematics minor",
     "organization": "University of Illinois Urbana-Champaign",
     "location": "Urbana, IL",
-    "summary": "SP26: HFT Technology (C++), Deep Learning for Computer Vision (Python), Systems Programming (C)\nFA25: Computer Architecture (MIPS Assembly, Verilog HDL), Data Structures and Algorithms (C++)\nSP25: Introduction to Computer Science II (C++), Discrete Structures, Calculus III, Abstract Linear Algebra",
-    "bullets": [],
+    "summary": "Focused on systems programming, algorithms, and machine learning, with coursework spanning C/C++ systems, computer architecture, and applied math.",
+    "bullets": [
+      "Systems Programming (C), Data Structures & Algorithms (C++) and Computer Architecture",
+      "Deep Learning for Computer Vision and HFT Technology (C++)",
+      "Additional work in discrete structures, linear algebra, and calculus"
+    ],
     "tags": [
       "computer-science",
       "mathematics",
@@ -24,14 +28,12 @@
     "title": "Undergraduate Research Assistant (AI & Data Engineering)",
     "organization": "Chemical Imaging and Structures Laboratory (CISL), Beckman Institute",
     "location": "Urbana, IL",
-    "summary": "99% reduction in imaging-to-inference turnaround; TensorRT U-Net optimization; custom TCP FTP and web-based Deep Zoom viewer; SQLite metadata and Firebase Auth.",
+    "summary": "Built a lab-scale imaging pipeline that cut imaging-to-inference turnaround from days to minutes, improved virtual-staining throughput by 45%, and shipped a browser-based viewer for large tissue images.",
     "bullets": [
-      "99% reduction in imaging-to-inference turnaround time (days to 5 minutes) by implementing automated end-to-end pipelines in three configurations: localhost, two-device system, and web-based interface.",
-      "Increased virtual staining inference speed by 45% through TensorRT optimization of U-Net model in PyTorch; presented findings at STEM Symposium 2025, CGD Poster Session 2026.",
-      "10x speedup with custom FTP via TCP sockets for two-device architecture for large file transfers by bypassing network drive latencies between non-GPU server and remote GPU cluster.",
-      "Currently modernizing pix2pix for IR Virtual Staining using Transformers and Diffusion Models.",
-      "Custom web-based Deep Zoom viewer (cisl-inference.beckman.illinois.edu) as part of the inference pipeline, eliminating PNG/TIFF pyramid generation and manual rendering latency.",
-      "Established centralized metadata SQLite database, QR code generation for sample tracking, activity logging, and Firebase Authentication."
+      "Reduced end-to-end turnaround from days to roughly 5 minutes by automating the imaging-to-inference workflow across localhost, two-device, and web deployments.",
+      "Improved virtual-staining inference speed by 45% through TensorRT optimization of a PyTorch U-Net and presented the work at research symposia.",
+      "Developed a web-based Deep Zoom viewer and metadata workflow for sample tracking, annotation, and secure access.",
+      "Expanded the pipeline toward transformer- and diffusion-based virtual staining research."
     ],
     "tags": [
       "research",
@@ -45,13 +47,13 @@
     "year": 2026,
     "dateLabel": "Mar 2026",
     "title": "Synapse",
-    "summary": "HackIllinois — Best General Hack and Best use of Cloudflare. Scales beta testing with a personalized live sandbox capturing real-time emotions, telemetry, and interactions; updates the app instantly using voice feedback.",
+    "summary": "Won Best General Hack and Best Use of Cloudflare at HackIllinois with a voice-driven beta-testing platform that gives each tester a live sandbox and feedback loop.",
     "intensity": "technical",
     "project": {
       "id": "synapse",
       "title": "Synapse",
       "subtitle": "HackIllinois | Best General Hack & Best use of Cloudflare",
-      "shortDescription": "Synapse scales beta testing by giving each tester a personalized live sandbox capturing real-time emotions, telemetry, and interactions while updating the app instantly using voice feedback. Integrated ElevenLabs TTS and STT and the prompt-refinement layer using Gemini.",
+      "shortDescription": "Built a voice-driven beta-testing platform that personalizes each session with live telemetry and feedback.",
       "color": "blue",
       "hasDetails": false,
       "links": [
@@ -67,9 +69,9 @@
         "HackIllinois"
       ],
       "highlights": [
-        "Best General Hack and Best use of Cloudflare at HackIllinois",
-        "Personalized live sandbox for beta testers with real-time emotions, telemetry, and interactions",
-        "ElevenLabs TTS and STT with Gemini prompt-refinement layer"
+        "Best General Hack and Best Use of Cloudflare at HackIllinois",
+        "Personalized live sandbox for each beta tester",
+        "Voice interaction pipeline with ElevenLabs and Gemini"
       ]
     },
     "tags": [
@@ -84,13 +86,13 @@
     "year": 2025,
     "dateLabel": "Oct 2025",
     "title": "AeroCast – NASA Space Apps",
-    "summary": "Air quality prediction system: feature engineering on NASA TEMPO satellite data combined with ground monitor data; LSTM, Random Forest, XGBoost on Azure ML for pollutant forecasting.",
+    "summary": "Built an air-quality forecasting system that fuses NASA TEMPO data with ground measurements and deploys multiple ML models on Azure ML.",
     "intensity": "technical",
     "project": {
       "id": "aerocast",
       "title": "AeroCast",
       "subtitle": "NASA Space Apps Challenge",
-      "shortDescription": "Feature engineering on NASA TEMPO satellite data combined with ground monitor data. Deployed LSTM, Random Forest, XGBoost models on Azure ML for pollutant forecasting.",
+      "shortDescription": "Built a multi-model air-quality forecasting pipeline that combines satellite and ground data for pollutant prediction.",
       "color": "blue",
       "hasDetails": true,
       "links": [
@@ -108,10 +110,9 @@
         "Time Series"
       ],
       "highlights": [
-        "Azure ML deployment with production-ready model serving",
-        "Multi-pollutant prediction across various time horizons",
-        "Feature engineering on NASA TEMPO satellite data",
-        "Gemini API integration for AQI interpretation and recommendations"
+        "Deployed forecasting models on Azure ML with a production-style serving workflow",
+        "Combined NASA TEMPO and ground-based data for multi-pollutant forecasting",
+        "Integrated Gemini for AQI interpretation and user-facing recommendations"
       ],
       "overview": [
         "AeroCast is an air quality prediction system developed for the NASA Space Apps Challenge, combining NASA TEMPO satellite data with weather information and ground monitor data to provide hyperlocal AQI predictions.",
@@ -250,13 +251,13 @@
     "year": 2025,
     "dateLabel": "Mar 2025",
     "title": "Tissue Imaging Web Viewer Platform",
-    "summary": "Flask + OpenSeadragon platform for 40K×40K pixel tissue images with deep zoom, annotations, and a QR-coded sample management system.",
+    "summary": "Built a Flask + OpenSeadragon platform for large tissue images with deep zoom, annotations, and a sample-tracking workflow for research use.",
     "intensity": "technical",
     "project": {
       "id": "cisl-web-viewer",
       "title": "Tissue Imaging Web Viewer Platform",
       "subtitle": "Beckman Institute - CISL Lab",
-      "shortDescription": "Flask web platform for viewing 40K×40K pixel tissue images using OpenSeadragon deep zoom with freehand annotations, automated sample database, and QR-based tracking system.",
+      "shortDescription": "Built a web platform for exploring large tissue images with annotation, measurement, and sample-management features.",
       "color": "blue",
       "featured": true,
       "hasDetails": true,
@@ -284,9 +285,9 @@
         "libvips"
       ],
       "highlights": [
-        "Achieved 10x faster tile generation through SZI format optimization after consulting with libvips author",
-        "Implemented dynamic pixel-accurate scale bars adapting to zoom level and micron-per-pixel metadata",
-        "Designed automated sample ingestion pipeline with SQLAlchemy ORM and Zebra printer QR integration"
+        "Optimized deep-zoom tile generation for large images and improved rendering performance",
+        "Added annotation, scale-bar, and screenshot tools for research workflows",
+        "Built a sample database and QR-based tracking system for lab operations"
       ],
       "overview": [
         "Built a comprehensive Flask-based web application with OpenSeadragon for seamless real-time viewing of high-resolution tissue images (40K×40K pixels), featuring smooth pan/zoom with multi-resolution pyramids. Achieved 10x faster file creation through SZI format optimization after consulting with libvips author.",
@@ -673,17 +674,73 @@
     ]
   },
   {
+    "id": "2026-hft-arbitrage",
+    "type": "project",
+    "year": 2026,
+    "dateLabel": "Jan 2026 – May 2026",
+    "title": "High-Performance ETF Arbitrage Pipeline",
+    "summary": "Led a four-person team to build an end-to-end ETF holdings and market-data pipeline for cash-vs-futures arbitrage research, combining Python data infrastructure with high-performance C++ parsers.",
+    "intensity": "technical",
+    "project": {
+      "id": "hft-arbitrage",
+      "title": "High-Performance ETF Arbitrage Pipeline",
+      "subtitle": "IE 421 | Group Leader & Core Developer",
+      "shortDescription": "Built an ETF holdings and market-data pipeline for arbitrage research, using Python for data acquisition and C++ parsers for low-latency market-data reconstruction.",
+      "color": "purple",
+      "hasDetails": true,
+      "links": [
+        {
+          "label": "Project Repository",
+          "url": "https://gitlab.engr.illinois.edu/ie421_high_frequency_trading_spring_2026/ie421_hft_spring_2026_group_02/group_02_project/"
+        }
+      ],
+      "tags": [
+        "Python",
+        "ArcticDB",
+        "Polars",
+        "C++",
+        "CME",
+        "NASDAQ",
+        "Strategy Studio"
+      ],
+      "highlights": [
+        "Built a Bloomberg/iShares holdings pipeline with adaptive sampling to reduce API load while preserving historical coverage",
+        "Created a dashboard for ETF coverage, snapshots, and portfolio-level trends",
+        "Implemented C++ CME Globex and NASDAQ ITCH parsers that reconstruct order books from raw market data"
+      ],
+      "overview": [
+        "The project built a full data pipeline for ETF cash-versus-futures arbitrage research, covering both ETF holdings data and raw exchange market data.",
+        "The workflow combined Python-based scraping and storage with high-performance C++ parsers that produce Strategy Studio-compatible CSV outputs."
+      ],
+      "technologies": [
+        "Python",
+        "Polars",
+        "ArcticDB",
+        "C++",
+        "Zstandard",
+        "Simple Binary Encoding",
+        "ITCH 5.0",
+        "Strategy Studio"
+      ]
+    },
+    "tags": [
+      "hft",
+      "systems",
+      "finance"
+    ]
+  },
+  {
     "id": "2025-eins",
     "type": "project",
     "year": 2025,
     "dateLabel": "CS 128 Honors",
     "title": "Eins",
-    "summary": "Uno-inspired card game in Rust playable over LAN. WebSocket-based server-client infrastructure using tokio-tungstenite, egui and eframe for the UI.",
+    "summary": "Built a Rust LAN card game with a WebSocket multiplayer backend and a lightweight desktop UI.",
     "project": {
       "id": "eins",
       "title": "Eins",
       "subtitle": "CS 128 Honors",
-      "shortDescription": "Uno-inspired card game in Rust playable over LAN. WebSocket-based server-client infrastructure using tokio-tungstenite, egui and eframe for the UI.",
+      "shortDescription": "Built a Rust LAN card game with a WebSocket multiplayer backend and a lightweight desktop UI.",
       "color": "blue",
       "hasDetails": false,
       "links": [
@@ -701,9 +758,9 @@
         "LAN"
       ],
       "highlights": [
-        "Uno-inspired card game in Rust playable over LAN",
-        "WebSocket-based server-client using tokio-tungstenite",
-        "egui and eframe for the UI"
+        "Implemented a multiplayer card game in Rust over LAN",
+        "Used WebSocket networking with tokio-tungstenite",
+        "Built the client UI with egui and eframe"
       ]
     },
     "tags": [
@@ -1016,11 +1073,11 @@
     "title": "Robotics Intern",
     "organization": "Machani Robotics",
     "location": "Bangalore, India",
-    "summary": "Developed gRPC microservices and humanoid facial animation/TTS in Python within Docker; collaborated on facial detection and tracking using PyTorch.",
+    "summary": "Built Python-based services for robotic interaction features and contributed to perception work for facial animation and tracking.",
     "bullets": [
-      "Developed gRPC microservices and tested them using Postman.",
-      "Worked on humanoid facial animation and TTS using Python within Docker containers.",
-      "Collaborated on facial detection and tracking features using PyTorch."
+      "Developed gRPC microservices and validated them with Postman.",
+      "Worked on humanoid facial animation and TTS in Docker-based Python services.",
+      "Contributed to facial detection and tracking work using PyTorch."
     ],
     "tags": [
       "grpc",
