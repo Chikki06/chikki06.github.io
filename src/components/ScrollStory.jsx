@@ -4,8 +4,9 @@ import { Environment, Html, useTexture } from "@react-three/drei";
 import { DoubleSide, SRGBColorSpace } from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { ExternalLink, Github, Linkedin, Mail } from "lucide-react";
+import { ExternalLink, Github, Linkedin, Mail, Maximize2, Minimize2 } from "lucide-react";
 import { useContent } from "../hooks/useContent.js";
+import Portfolio from "./Portfolio.jsx";
 import ProjectModal from "./ProjectModal.jsx";
 import { createStoryData, projectSummary, projectTitle } from "./storyData.js";
 import { Model as MonitorModel } from "../../monitor.jsx";
@@ -229,72 +230,34 @@ function MonitorProjectDetail({ node, index, projects, onSelect, onClose, scroll
   </article>;
 }
 
-function MonitorScreen({ projects, interactive, onScrollControllerChange, screenScale }) {
-  const [selectedIndex, setSelectedIndex] = useState(null);
-  const projectListRef = useRef(null);
-  const detailRef = useRef(null);
-  const activeScrollRef = useRef(null);
-
-  useEffect(() => {
-    activeScrollRef.current = selectedIndex === null ? projectListRef.current : detailRef.current;
-  }, [selectedIndex]);
-
-  const consumeWheel = useCallback((deltaY, deltaMode = 0) => {
-    // A project detail is a captive reading surface: its wheel never advances
-    // the story. The archive list hands the story back only at either edge.
-    if (!interactive) return false;
-    const element = activeScrollRef.current;
-    if (!element) return false;
-    const delta = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? element.clientHeight : 1);
-    if (selectedIndex !== null) {
-      element.scrollTop += delta;
-      return true;
-    }
-    const atTop = element.scrollTop <= 0;
-    const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-    if ((delta < 0 && atTop) || (delta > 0 && atBottom) || delta === 0) return false;
-    element.scrollTop += delta;
-    return true;
-  }, [interactive, selectedIndex]);
-
-  useEffect(() => {
-    onScrollControllerChange?.(consumeWheel);
-    return () => onScrollControllerChange?.(null);
-  }, [consumeWheel, onScrollControllerChange]);
-
-  const handleWheel = useCallback((event) => {
-    if (selectedIndex !== null) {
-      event.preventDefault();
-      event.stopPropagation();
-      const element = detailRef.current;
-      if (element) {
-        const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1);
-        element.scrollTop += delta;
-      }
-      return;
-    }
-    if (!consumeWheel(event.deltaY, event.deltaMode)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }, [consumeWheel, selectedIndex]);
-
+function MonitorScreen({ interactive, onScrollControllerChange, screenScale, hidden }) {
+  if (hidden) return null;
+  // Render a full-size portfolio layout, then CSS-scale it into the GLTF screen
+  // so the monitor preview matches fullscreen proportions (not a comically large type scale).
+  const frameWidth = 808;
+  const frameHeight = 465;
+  const virtualWidth = 1280;
+  const scale = frameWidth / virtualWidth;
+  const virtualHeight = frameHeight / scale;
   return (
-    <Html transform occlude center distanceFactor={MONITOR_SCREEN.distanceFactor * screenScale} position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z + 0.007]} pointerEvents="auto">
-      <section className="h-[465px] w-[808px] overflow-hidden bg-black p-4 text-white antialiased [isolation:isolate]" aria-label="Project monitor" aria-hidden={!interactive}>
-        {selectedIndex !== null ? <MonitorProjectDetail node={projects[selectedIndex]} index={selectedIndex} projects={projects} onSelect={setSelectedIndex} scrollRef={detailRef} onWheel={handleWheel} onClose={() => setSelectedIndex(null)} /> : <><div className="mb-3 flex items-baseline justify-between border-b border-red-950 pb-2"><div><p className="font-mono text-[9px] uppercase tracking-[.22em] text-red-500">Selected work / video archive</p><h2 className="mt-1 text-xl font-semibold tracking-tight">Project vault</h2></div><span className="font-mono text-[9px] text-red-200/70">{projects.length} case studies</span></div><div ref={projectListRef} onWheel={handleWheel} className="grid h-[367px] grid-cols-3 gap-2 overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{projects.map((node, index) => <MonitorProjectCard key={node.id} node={node} index={index} onOpenProject={(_node, nextIndex) => setSelectedIndex(nextIndex)} />)}</div></>}
+    <Html transform occlude center distanceFactor={MONITOR_SCREEN.distanceFactor * screenScale} position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z + 0.007]} pointerEvents={interactive ? "auto" : "none"}>
+      <section className="overflow-hidden bg-black text-white antialiased [isolation:isolate]" style={{ width: frameWidth, height: frameHeight }} aria-label="Portfolio monitor" aria-hidden={!interactive}>
+        <div className="origin-top-left" style={{ width: virtualWidth, height: virtualHeight, transform: `scale(${scale})` }}>
+          <Portfolio mode="monitor" className="h-full" onScrollControllerChange={interactive ? onScrollControllerChange : undefined} />
+        </div>
       </section>
     </Html>
   );
 }
 
-function Monitor({ data, onReady, interactive, onScrollControllerChange, tuning }) {
+function Monitor({ onReady, interactive, onScrollControllerChange, tuning, screenHidden }) {
   useEffect(() => onReady?.(), [onReady]);
   return (
     <group position={monitorPosition(tuning.modelScale)} scale={tuning.modelScale}>
       {/* GLTFJSX keeps the screen, bezel, stand, and controls in their authored hierarchy. */}
       <group position={MONITOR_MODEL_OFFSET} scale={0.003}><MonitorModel /></group>
       <mesh position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z]}><planeGeometry args={[MONITOR_SCREEN.width, MONITOR_SCREEN.height]} /><meshStandardMaterial color="#020617" roughness={0.32} /></mesh>
-      <MonitorScreen projects={data.projects} interactive={interactive} onScrollControllerChange={onScrollControllerChange} screenScale={tuning.screenScale} />
+      <MonitorScreen interactive={interactive} onScrollControllerChange={onScrollControllerChange} screenScale={tuning.screenScale} hidden={screenHidden} />
     </group>
   );
 }
@@ -314,9 +277,11 @@ function Letter({ data }) {
   );
 }
 
-function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress, setCardFace, sceneReady, monitorTuning }) {
+function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress, setCardFace, sceneReady, monitorTuning, cameraViewActive }) {
   const { camera, viewport, size } = useThree((state) => ({ camera: state.camera, viewport: state.viewport, size: state.size }));
   const target = useRef({ x: CARD_POSITION[0], y: CARD_POSITION[1], z: CARD_POSITION[2] });
+  const cameraViewActiveRef = useRef(cameraViewActive);
+  cameraViewActiveRef.current = cameraViewActive;
   useFrame(() => camera.lookAt(target.current.x, target.current.y, target.current.z));
   useLayoutEffect(() => {
     const card = liftRef.current;
@@ -401,6 +366,8 @@ function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress,
         animation: timeline,
         invalidateOnRefresh: true,
         onUpdate: (self) => {
+          // While the monitor site is fullscreened, scroll must not scrub the camera.
+          if (!cameraViewActiveRef.current) return;
           setStoryProgress(self.progress);
           const storyTime = self.progress * timeline.duration();
           // Neither DOM face is rendered while the physical card rotates. This is
@@ -418,7 +385,7 @@ function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress,
   return null;
 }
 
-function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgress, setCardFace, onMonitorReady, onMonitorScrollControllerChange, monitorTuning }) {
+function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgress, setCardFace, onMonitorReady, onMonitorScrollControllerChange, monitorTuning, cameraViewActive, monitorFullscreen }) {
   const liftRef = useRef();
   const spinRef = useRef();
   const [sceneReady, setSceneReady] = useState(false);
@@ -426,8 +393,8 @@ function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgres
   return <Canvas shadows dpr={[1, 2]} camera={{ fov: 43, position: [0, 6.5, 1.25] }} gl={{ antialias: true, powerPreference: "high-performance" }}>
     <ambientLight intensity={0.8} /><directionalLight castShadow position={[4, 8, 3]} intensity={2.4} shadow-mapSize={[1024, 1024]} /><Environment preset="apartment" />
     <Wall /><Desk /><BusinessCard liftRef={liftRef} spinRef={spinRef} cardFace={cardFace} data={data} />
-    <Suspense fallback={null}><Monitor data={data} onReady={ready} interactive={phase === 3} onScrollControllerChange={onMonitorScrollControllerChange} tuning={monitorTuning} /></Suspense>
-    <Letter data={data} /><StoryCameraRig liftRef={liftRef} spinRef={spinRef} rootRef={rootRef} setPhase={setPhase} setStoryProgress={setStoryProgress} setCardFace={setCardFace} sceneReady={sceneReady} monitorTuning={monitorTuning} />
+    <Suspense fallback={null}><Monitor onReady={ready} interactive={phase === 3 && !monitorFullscreen} onScrollControllerChange={onMonitorScrollControllerChange} tuning={monitorTuning} screenHidden={monitorFullscreen} /></Suspense>
+    <Letter data={data} /><StoryCameraRig liftRef={liftRef} spinRef={spinRef} rootRef={rootRef} setPhase={setPhase} setStoryProgress={setStoryProgress} setCardFace={setCardFace} sceneReady={sceneReady} monitorTuning={monitorTuning} cameraViewActive={cameraViewActive} />
   </Canvas>;
 }
 
@@ -464,18 +431,36 @@ function StoryProgressNav({ phase, progress }) {
   }, [scrollToProgress]);
 
   return <nav style={{ zIndex: 20000000 }} className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2 sm:right-5" aria-label="Story chapters">
-    <div className="relative flex h-[min(52vh,360px)] min-h-56 w-11 flex-col items-center justify-between rounded-full border border-white/10 bg-gradient-to-b from-white/12 via-black/55 to-black/35 py-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] ring-1 ring-red-950/35 backdrop-blur-xl">
-      <div ref={railRef} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }} className="absolute inset-y-7 left-1/2 w-1 -translate-x-1/2 cursor-ns-resize rounded-full bg-red-950/90" role="slider" aria-label="Story progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); scrollToProgress(Math.max(0, (phase - 2) / 3)); } if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); scrollToProgress(Math.min(1, phase / 3)); } }}>
-        <span className="pointer-events-none absolute left-1/2 top-0 w-1 -translate-x-1/2 rounded-full bg-gradient-to-b from-red-500 to-red-800" style={{ height: `${progress * 100}%` }} />
+    <div className="relative flex h-[min(52vh,360px)] min-h-56 w-11 flex-col items-center justify-between rounded-full border border-white/10 bg-gradient-to-b from-white/12 via-black/55 to-black/35 py-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] ring-1 ring-[#FF0000]/25 backdrop-blur-xl">
+      <div ref={railRef} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }} className="absolute inset-y-7 left-1/2 w-1 -translate-x-1/2 cursor-ns-resize rounded-full bg-black" role="slider" aria-label="Story progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); scrollToProgress(Math.max(0, (phase - 2) / 3)); } if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); scrollToProgress(Math.min(1, phase / 3)); } }}>
+        <span className="pointer-events-none absolute left-1/2 top-0 w-1 -translate-x-1/2 rounded-full bg-[#FF0000]" style={{ height: `${progress * 100}%` }} />
       </div>
       {chapters.map((chapter, index) => {
         const active = phase === index + 1;
         const completed = phase > index + 1;
         const clickExpanded = expandedChapter === index;
-        return <button key={chapter.label} type="button" onClick={() => { setExpandedChapter(index); clearTimeout(expansionTimerRef.current); expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650); scrollToProgress(chapter.progress); }} aria-current={active ? "step" : undefined} className={`group relative z-10 mr-2 flex h-7 w-7 self-end items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 hover:w-32 focus-visible:w-32 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 ${clickExpanded ? "w-32" : ""} ${active ? "bg-red-600 text-white shadow-[0_0_16px_rgba(220,38,38,0.55)]" : completed ? "bg-red-950/90 text-red-200 hover:bg-red-900 hover:text-white" : "bg-black/80 text-white/65 hover:bg-red-950 hover:text-white"}`}><span>0{index + 1}</span><span className={`max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 ${clickExpanded ? "ml-2 max-w-20 opacity-100" : ""}`}>{chapter.label}</span></button>;
+        return <button key={chapter.label} type="button" onClick={() => { setExpandedChapter(index); clearTimeout(expansionTimerRef.current); expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650); scrollToProgress(chapter.progress); }} aria-current={active ? "step" : undefined} className={`group relative z-10 mr-2 flex h-7 w-7 self-end items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 hover:w-32 focus-visible:w-32 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${clickExpanded ? "w-32" : ""} ${active ? "bg-[#FF0000] text-white shadow-[0_0_16px_rgba(255,0,0,0.55)]" : completed ? "bg-black text-white hover:bg-[#FF0000] hover:text-white" : "bg-black/80 text-white hover:bg-[#FF0000] hover:text-white"}`}><span>0{index + 1}</span><span className={`max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 ${clickExpanded ? "ml-2 max-w-20 opacity-100" : ""}`}>{chapter.label}</span></button>;
       })}
     </div>
   </nav>;
+}
+
+function MonitorFullscreenToggle({ fullscreen, onToggle, hint = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={fullscreen ? "Exit monitor fullscreen" : "Enter monitor fullscreen"}
+      title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+      className={`pointer-events-auto absolute bottom-4 right-4 z-[100001] flex h-10 w-10 items-center justify-center rounded-md border bg-black/70 text-white shadow-lg backdrop-blur-md transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${
+        hint
+          ? "exit-fullscreen-hint border-[#FF0000]"
+          : "border-white/20 hover:border-[#FF0000] hover:bg-black/85"
+      }`}
+    >
+      {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+    </button>
+  );
 }
 
 export default function ScrollStory() {
@@ -483,21 +468,101 @@ export default function ScrollStory() {
   const rootRef = useRef();
   const lastProjectButton = useRef();
   const monitorScrollControllerRef = useRef(null);
+  const lockedScrollYRef = useRef(0);
   const [phase, setPhase] = useState(1);
   const [storyProgress, setStoryProgress] = useState(0);
   const [cardFace, setCardFace] = useState("front");
   const [modalProject, setModalProject] = useState(null);
+  // Land on the projects-site monitor canvas fullscreen by default.
+  const [monitorFullscreen, setMonitorFullscreen] = useState(true);
+  const [exitHint, setExitHint] = useState(false);
+  const exitHintTimerRef = useRef(null);
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [webgl] = useState(hasWebGL);
   const data = useMemo(() => createStoryData(timeline, site), [timeline, site]);
+  const cameraViewActive = !monitorFullscreen;
   const openProject = useCallback((project, trigger) => { lastProjectButton.current = trigger; setModalProject(project); }, []);
   const closeProject = useCallback(() => { setModalProject(null); requestAnimationFrame(() => lastProjectButton.current?.focus()); }, []);
   const setMonitorScrollController = useCallback((controller) => {
     monitorScrollControllerRef.current = controller;
   }, []);
+
+  const flashExitHint = useCallback(() => {
+    setExitHint(true);
+    clearTimeout(exitHintTimerRef.current);
+    exitHintTimerRef.current = setTimeout(() => setExitHint(false), 650);
+  }, []);
+
+  useEffect(() => () => clearTimeout(exitHintTimerRef.current), []);
+
+  const exitMonitorFullscreen = useCallback(() => {
+    // Leave the projects canvas and jump to the top of the scroll story.
+    lockedScrollYRef.current = 0;
+    setMonitorFullscreen(false);
+    setExitHint(false);
+  }, []);
+
+  const enterMonitorFullscreen = useCallback(() => {
+    lockedScrollYRef.current = window.scrollY;
+    setMonitorFullscreen(true);
+  }, []);
+
+  const toggleMonitorFullscreen = useCallback(() => {
+    setMonitorFullscreen((current) => {
+      if (current) {
+        lockedScrollYRef.current = 0;
+        setExitHint(false);
+        return false;
+      }
+      lockedScrollYRef.current = window.scrollY;
+      return true;
+    });
+  }, []);
+
+  // Freeze page scroll + ScrollTrigger scrubbing while the original site fills the viewport.
+  useEffect(() => {
+    if (!monitorFullscreen) return undefined;
+    const storyTrigger = ScrollTrigger.getById("portfolio-story");
+    storyTrigger?.disable(false);
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    const lockScroll = () => {
+      if (window.scrollY !== lockedScrollYRef.current) {
+        window.scrollTo(0, lockedScrollYRef.current);
+      }
+    };
+    const blockPageWheel = (event) => {
+      if (!event.target?.closest?.("[data-monitor-fullscreen]")) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("scroll", lockScroll, { passive: false });
+    window.addEventListener("wheel", blockPageWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("scroll", lockScroll);
+      window.removeEventListener("wheel", blockPageWheel, { capture: true });
+      document.documentElement.style.overflow = previousOverflow;
+      storyTrigger?.enable(false);
+      window.scrollTo(0, lockedScrollYRef.current);
+      requestAnimationFrame(() => ScrollTrigger.refresh());
+    };
+  }, [monitorFullscreen]);
+
+  useEffect(() => {
+    if (!monitorFullscreen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        exitMonitorFullscreen();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [exitMonitorFullscreen, monitorFullscreen]);
+
   useEffect(() => {
     const routeWheelToMonitor = (event) => {
-      if (phase !== 3 || event.defaultPrevented) return;
+      if (monitorFullscreen || phase !== 3 || event.defaultPrevented) return;
       const consumed = monitorScrollControllerRef.current?.(event.deltaY, event.deltaMode);
       if (!consumed) return;
       event.preventDefault();
@@ -505,16 +570,40 @@ export default function ScrollStory() {
     };
     window.addEventListener("wheel", routeWheelToMonitor, { passive: false });
     return () => window.removeEventListener("wheel", routeWheelToMonitor);
-  }, [phase]);
+  }, [monitorFullscreen, phase]);
+
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">Loading portfolio…</div>;
   if (reducedMotion || !webgl) return <><StaticPortfolioFallback data={data} reason={reducedMotion ? "Reduced-motion view enabled." : "Interactive 3D is unavailable in this browser."} onOpenProject={openProject} /><ProjectModal project={modalProject} isOpen={Boolean(modalProject)} onClose={closeProject} /></>;
   return <main ref={rootRef} className="scroll-story relative h-[500vh] bg-black [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div className="sticky top-0 h-screen overflow-hidden"><StoryCanvas data={data} phase={phase} cardFace={cardFace} rootRef={rootRef} setPhase={setPhase} setStoryProgress={setStoryProgress} setCardFace={setCardFace} onMonitorReady={() => ScrollTrigger.refresh()} onMonitorScrollControllerChange={setMonitorScrollController} monitorTuning={DEFAULT_MONITOR_TUNING} />
-      <StoryProgressNav phase={phase} progress={storyProgress} />
-      <p className="pointer-events-none absolute bottom-5 left-5 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">Scroll to explore</p>
-      {error && <p className="pointer-events-none absolute bottom-5 right-5 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
-      <p className="pointer-events-none absolute bottom-5 right-5 translate-y-6 text-[9px] text-white/40">Monitor model: portgl16 · CC BY 4.0</p>
+    <div className="sticky top-0 h-screen overflow-hidden">
+      <StoryCanvas
+        data={data}
+        phase={phase}
+        cardFace={cardFace}
+        rootRef={rootRef}
+        setPhase={setPhase}
+        setStoryProgress={setStoryProgress}
+        setCardFace={setCardFace}
+        onMonitorReady={() => ScrollTrigger.refresh()}
+        onMonitorScrollControllerChange={setMonitorScrollController}
+        monitorTuning={DEFAULT_MONITOR_TUNING}
+        cameraViewActive={cameraViewActive}
+        monitorFullscreen={monitorFullscreen}
+      />
+      {!monitorFullscreen && <StoryProgressNav phase={phase} progress={storyProgress} />}
+      {!monitorFullscreen && <p className="pointer-events-none absolute bottom-5 left-5 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">Scroll to explore</p>}
+      {!monitorFullscreen && error && <p className="pointer-events-none absolute bottom-5 right-5 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
+      {!monitorFullscreen && <p className="pointer-events-none absolute bottom-5 right-5 translate-y-6 text-[9px] text-white/40">Monitor model: portgl16 · CC BY 4.0</p>}
+      {(phase === 3 && !monitorFullscreen) && (
+        <MonitorFullscreenToggle fullscreen={false} onToggle={enterMonitorFullscreen} />
+      )}
     </div>
+    {monitorFullscreen && (
+      <div data-monitor-fullscreen className="pointer-events-auto fixed inset-0 z-[100000] bg-black" role="dialog" aria-modal="true" aria-label="Projects site">
+        <Portfolio mode="fullscreen" className="h-full" onBottomOverscroll={flashExitHint} />
+        <MonitorFullscreenToggle fullscreen hint={exitHint} onToggle={exitMonitorFullscreen} />
+      </div>
+    )}
     {STORY_CHAPTER_PROGRESS.map((progress, index) => <span key={progress} id={["story-card", "story-experience", "story-projects", "story-letter"][index]} aria-hidden="true" className="pointer-events-none absolute left-0 h-px w-px" style={{ top: `${progress * 400}vh` }} />)}
     {["card-overhead", "timeline-read", "monitor", "letter"].map((chapter, index) => <section key={chapter} className="h-screen" aria-label={`Story chapter ${index + 1}: ${chapter}`} />)}
   </main>;

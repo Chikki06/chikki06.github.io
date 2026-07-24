@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { X, ExternalLink } from "lucide-react";
+import HoverDemoVideo, { collectProjectVideos } from "./HoverDemoVideo.jsx";
 
-const ACCENT = "#c41a1a";
+const ACCENT = "#FF0000";
 const BG = "#0a0a0a";
-const FG = "#ededed";
+const FG = "#ffffff";
 
 export default function ProjectModal({ project, isOpen, onClose }) {
   const [isTldr, setIsTldr] = useState(false);
@@ -30,6 +31,7 @@ export default function ProjectModal({ project, isOpen, onClose }) {
     (Array.isArray(project.overview) ? project.overview[0] : project.overview) ||
     project.title;
   const highlights = project.highlights || [];
+  const videos = collectProjectVideos(project);
 
   return (
     <div
@@ -38,64 +40,65 @@ export default function ProjectModal({ project, isOpen, onClose }) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden border border-neutral-800"
+        className="relative max-h-[90vh] w-full max-w-4xl overflow-hidden border border-neutral-800 text-white"
         style={{ backgroundColor: BG, color: FG }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-neutral-800 px-5 py-4">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-neutral-50 md:text-3xl">
-              {project.title}
-            </h2>
-            {project.subtitle && (
-              <p className="mt-1 text-base text-neutral-300">{project.subtitle}</p>
-            )}
+            <h2 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">{project.title}</h2>
+            {project.subtitle && <p className="mt-1 text-base text-white">{project.subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 border border-neutral-600 text-neutral-400 hover:border-[#c41a1a] hover:text-[#c41a1a] transition-colors"
+            className="border border-neutral-600 p-2 text-white transition-colors hover:border-[#FF0000] hover:text-[#FF0000]"
             aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* TLDR / Detailed toggle */}
-        <div className="sticky top-[72px] z-10 flex items-center gap-3 border-b border-neutral-800 px-5 py-2 bg-[#0a0a0a]">
-          <span className="text-sm text-neutral-400">Brief</span>
+        <div className="sticky top-[72px] z-10 flex items-center gap-3 border-b border-neutral-800 bg-[#0a0a0a] px-5 py-2">
+          <span className="text-sm text-white">Brief</span>
           <button
             type="button"
             onClick={() => setIsTldr(!isTldr)}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-sm border transition-colors ${
-              isTldr ? "border-[#c41a1a] bg-[#c41a1a]" : "border-neutral-600 bg-transparent"
+              isTldr ? "border-[#FF0000] bg-[#FF0000]" : "border-neutral-600 bg-transparent"
             }`}
             aria-pressed={isTldr}
           >
             <span
-              className={`inline-block h-4 w-4 bg-neutral-50 transform transition-transform ${
-                isTldr ? "translate-x-1 ml-0.5" : "translate-x-6"
+              className={`inline-block h-4 w-4 transform bg-white transition-transform ${
+                isTldr ? "ml-0.5 translate-x-1" : "translate-x-6"
               }`}
             />
           </button>
-          <span className="text-sm text-neutral-400">Detailed</span>
+          <span className="text-sm text-white">Detailed</span>
         </div>
 
-        <div className="overflow-y-auto max-h-[calc(90vh-140px)] px-5 py-5">
-          {/* Links */}
-          {project.links && project.links.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-6">
+        <div className="portfolio-scroll max-h-[calc(90vh-140px)] overflow-y-auto px-5 py-5">
+          {videos.length > 0 && (
+            <section className="mb-6 grid gap-3 sm:grid-cols-2">
+              {videos.slice(0, 2).map((video) => (
+                <HoverDemoVideo key={video.url} url={video.url} title={video.title} />
+              ))}
+            </section>
+          )}
+
+          {project.links?.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-2">
               {project.links.map((link, idx) => (
                 <a
                   key={idx}
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 border text-base transition-colors"
+                  className="inline-flex items-center gap-2 border px-3 py-2 text-base transition-colors"
                   style={{ borderColor: ACCENT, color: ACCENT }}
                 >
-                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  <ExternalLink className="h-4 w-4 shrink-0" />
                   {link.label}
                 </a>
               ))}
@@ -103,43 +106,32 @@ export default function ProjectModal({ project, isOpen, onClose }) {
           )}
 
           {isTldr ? (
-            /* TLDR: condensed, direct. No bullet dumps with "+N more". */
             <>
               <section className="mb-6">
-                <p className="text-lg leading-relaxed text-neutral-100 max-w-2xl">
+                <p className="max-w-2xl text-lg leading-relaxed text-white">
                   {typeof shortSummary === "string" ? shortSummary : ""}
                 </p>
               </section>
               {highlights.length > 0 && (
                 <section className="mb-6">
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                    At a glance
-                  </h3>
-                  <p className="text-base leading-relaxed text-neutral-200">
-                    {highlights.join(" ")}
-                  </p>
+                  <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">At a glance</h3>
+                  <p className="text-base leading-relaxed text-white">{highlights.join(" ")}</p>
                 </section>
               )}
-              {project.impact?.achievements && project.impact.achievements.length > 0 && (
+              {project.impact?.achievements?.length > 0 && (
                 <section className="mb-6">
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                    Results
-                  </h3>
-                  <p className="text-base leading-relaxed text-neutral-200">
-                    {project.impact.achievements.join(" ")}
-                  </p>
+                  <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">Results</h3>
+                  <p className="text-base leading-relaxed text-white">{project.impact.achievements.join(" ")}</p>
                 </section>
               )}
-              {project.technologies && project.technologies.length > 0 && (
+              {project.technologies?.length > 0 && (
                 <section>
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                    Tech
-                  </h3>
+                  <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">Tech</h3>
                   <div className="flex flex-wrap gap-1.5">
                     {project.technologies.map((t, i) => (
                       <span
                         key={i}
-                        className="px-2 py-1 border text-sm font-mono text-neutral-300"
+                        className="border px-2 py-1 font-mono text-sm text-white"
                         style={{ borderColor: "#404040" }}
                       >
                         {t}
@@ -150,13 +142,10 @@ export default function ProjectModal({ project, isOpen, onClose }) {
               )}
             </>
           ) : (
-            /* Detailed view: full content */
             <>
               <section className="mb-6">
-                <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                  Overview
-                </h3>
-                <div className="text-base leading-relaxed text-neutral-100">
+                <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">Overview</h3>
+                <div className="text-base leading-relaxed text-white">
                   {Array.isArray(project.overview) ? (
                     project.overview.map((p, i) => (
                       <p key={i} className="mb-3">
@@ -169,12 +158,10 @@ export default function ProjectModal({ project, isOpen, onClose }) {
                 </div>
               </section>
 
-              {project.impact?.achievements && project.impact.achievements.length > 0 && (
+              {project.impact?.achievements?.length > 0 && (
                 <section className="mb-6">
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                    Results
-                  </h3>
-                  <ul className="space-y-1.5 text-base text-neutral-200">
+                  <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">Results</h3>
+                  <ul className="space-y-1.5 text-base text-white">
                     {project.impact.achievements.map((a, i) => (
                       <li key={i} className="flex gap-2">
                         <span style={{ color: ACCENT }}>—</span>
@@ -185,52 +172,32 @@ export default function ProjectModal({ project, isOpen, onClose }) {
                 </section>
               )}
 
-              {project.timeline && project.timeline.length > 0 && (
+              {project.timeline?.length > 0 && (
                 <section className="mb-6">
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-3">
-                    Phases
-                  </h3>
+                  <h3 className="mb-3 font-mono text-sm uppercase tracking-[0.14em] text-white">Phases</h3>
                   <div className="space-y-4">
                     {project.timeline.map((phase, idx) => (
-                      <div
-                        key={idx}
-                        className="border border-neutral-800 p-4"
-                      >
-                        <h4 className="text-base font-semibold text-neutral-100 mb-2">
-                          {phase.title}
-                        </h4>
-                        {phase.description && (
-                          <p className="text-base text-neutral-200 mb-3">
-                            {phase.description}
-                          </p>
-                        )}
+                      <div key={idx} className="border border-neutral-800 p-4">
+                        <h4 className="mb-2 text-base font-semibold text-white">{phase.title}</h4>
+                        {phase.description && <p className="mb-3 text-base text-white">{phase.description}</p>}
                         {phase.videoUrl && (
                           <div className="mb-3 max-w-md">
-                            <div className="relative pt-[56.25%] border border-neutral-800">
-                              <iframe
-                                className="absolute inset-0 w-full h-full"
-                                src={phase.videoUrl}
-                                title={phase.title}
-                                frameBorder="0"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
+                            <HoverDemoVideo url={phase.videoUrl} title={phase.title} />
                           </div>
                         )}
-                        {phase.features && phase.features.length > 0 && (
-                          <ul className="text-base text-neutral-200 space-y-1">
+                        {phase.features?.length > 0 && (
+                          <ul className="space-y-1 text-base text-white">
                             {phase.features.map((f, i) => (
                               <li key={i}>{f}</li>
                             ))}
                           </ul>
                         )}
-                        {phase.technologies && phase.technologies.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
+                        {phase.technologies?.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
                             {phase.technologies.map((t, i) => (
                               <span
                                 key={i}
-                                className="px-2 py-0.5 border text-sm font-mono text-neutral-400"
+                                className="border px-2 py-0.5 font-mono text-sm text-white"
                                 style={{ borderColor: "#404040" }}
                               >
                                 {t}
@@ -244,36 +211,28 @@ export default function ProjectModal({ project, isOpen, onClose }) {
                 </section>
               )}
 
-              {project.architectureSections && project.architectureSections.length > 0 && (
+              {project.architectureSections?.length > 0 && (
                 <section className="mb-6">
                   <button
                     type="button"
                     onClick={() => setOpenSection(openSection === "arch" ? null : "arch")}
-                    className="w-full flex items-center justify-between text-base font-mono uppercase tracking-[0.14em] text-neutral-300 hover:text-neutral-100 py-2 border-b border-neutral-800"
+                    className="flex w-full items-center justify-between border-b border-neutral-800 py-2 font-mono text-base uppercase tracking-[0.14em] text-white hover:text-white"
                   >
                     <span>Architecture & design</span>
                     <span>{openSection === "arch" ? "−" : "+"}</span>
                   </button>
                   {openSection === "arch" && (
-                    <div className="pt-4 space-y-4">
+                    <div className="space-y-4 pt-4">
                       {project.architectureSections.map((sec, i) => (
                         <div key={i} className="border-l-2 pl-4" style={{ borderColor: ACCENT }}>
-                          <h5 className="text-base font-semibold text-neutral-100 mb-2">
-                            {sec.title}
-                          </h5>
-                          {sec.content && (
-                            <p className="text-base text-neutral-200 mb-2">{sec.content}</p>
-                          )}
+                          <h5 className="mb-2 text-base font-semibold text-white">{sec.title}</h5>
+                          {sec.content && <p className="mb-2 text-base text-white">{sec.content}</p>}
                           {sec.subsections?.map((sub, j) => (
                             <div key={j} className="mb-3">
-                              <h6 className="text-sm font-semibold text-neutral-200 mb-1">
-                                {sub.title}
-                              </h6>
-                              {sub.content && (
-                                <p className="text-base text-neutral-200 mb-1">{sub.content}</p>
-                              )}
-                              {sub.points && sub.points.length > 0 && (
-                                <ul className="text-base text-neutral-200 space-y-0.5">
+                              <h6 className="mb-1 text-sm font-semibold text-white">{sub.title}</h6>
+                              {sub.content && <p className="mb-1 text-base text-white">{sub.content}</p>}
+                              {sub.points?.length > 0 && (
+                                <ul className="space-y-0.5 text-base text-white">
                                   {sub.points.map((point, k) => (
                                     <li key={k}>{point}</li>
                                   ))}
@@ -288,16 +247,14 @@ export default function ProjectModal({ project, isOpen, onClose }) {
                 </section>
               )}
 
-              {project.technologies && project.technologies.length > 0 && (
+              {project.technologies?.length > 0 && (
                 <section>
-                  <h3 className="text-sm font-mono uppercase tracking-[0.14em] text-neutral-400 mb-2">
-                    Tech
-                  </h3>
+                  <h3 className="mb-2 font-mono text-sm uppercase tracking-[0.14em] text-white">Tech</h3>
                   <div className="flex flex-wrap gap-1.5">
                     {project.technologies.map((t, i) => (
                       <span
                         key={i}
-                        className="px-2 py-1 border text-sm font-mono text-neutral-300"
+                        className="border px-2 py-1 font-mono text-sm text-white"
                         style={{ borderColor: "#404040" }}
                       >
                         {t}

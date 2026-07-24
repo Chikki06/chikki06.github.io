@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Mail, Linkedin, Github } from "lucide-react";
 import { useContent } from "../hooks/useContent.js";
 import ProjectModal from "./ProjectModal.jsx";
-import BackgroundFireOverlay from "./BackgroundFireOverlay.jsx";
+import HoverDemoVideo, { collectProjectVideos } from "./HoverDemoVideo.jsx";
 
-const ACCENT = "#c41a1a";
+const ACCENT = "#FF0000";
 const BG = "#0a0a0a";
-const FG = "#ededed";
+const FG = "#ffffff";
 
 const FILTERS = [
   { value: "work", label: "Work" },
@@ -14,13 +14,11 @@ const FILTERS = [
   { value: "all", label: "All" },
 ];
 
-// Project IDs to show as "View project" links on the CISL work entry.
 const CISL_RELATED_PROJECT_IDS = [
   { id: "cisl-inference-pipeline", label: "Inference pipeline" },
   { id: "cisl-web-viewer", label: "Web viewer" },
 ];
 
-// Group nodes by year preserving array order (years in first-occurrence order).
 function groupByYearPreservingOrder(nodes) {
   const groupedMap = new Map();
   const yearsInOrder = [];
@@ -35,21 +33,26 @@ function groupByYearPreservingOrder(nodes) {
   return { groupedMap, years: yearsInOrder };
 }
 
-function NodeImages({ node }) {
+function NodeMedia({ node, videos = [] }) {
   const images = node.images && Array.isArray(node.images) ? node.images : [];
-  if (!images.length) return null;
+  if (!images.length && !videos.length) return null;
 
   return (
-    <aside className="mt-3 md:mt-0 md:ml-4 md:w-52">
-      <div className="h-28 overflow-x-auto flex gap-2 md:h-40 md:flex-col md:overflow-y-auto md:overflow-x-hidden">
+    <aside className="mt-3 md:mt-0 md:ml-4 md:w-56">
+      <div className="portfolio-scroll flex h-auto max-h-52 flex-col gap-2 overflow-y-auto md:max-h-64">
+        {videos.slice(0, 2).map((video) => (
+          <HoverDemoVideo
+            key={video.url}
+            url={video.url}
+            title={video.title}
+            compact
+            className="w-full shrink-0"
+          />
+        ))}
         {images.map((img) => (
           <div key={img.src} className="shrink-0 md:w-full">
-            <div className="relative h-24 w-32 overflow-hidden rounded border border-neutral-800 bg-neutral-950 md:h-24 md:w-full">
-              <img
-                src={img.src}
-                alt={img.alt || ""}
-                className="h-full w-full object-cover"
-              />
+            <div className="relative h-24 w-full overflow-hidden border border-neutral-800 bg-neutral-950">
+              <img src={img.src} alt={img.alt || ""} className="h-full w-full object-cover" />
             </div>
           </div>
         ))}
@@ -58,9 +61,10 @@ function NodeImages({ node }) {
   );
 }
 
-function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks }) {
-  const baseClasses =
-    "border border-neutral-800 px-4 py-4 text-base leading-relaxed";
+function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks, relatedVideos }) {
+  const baseClasses = "border border-neutral-800 px-4 py-4 text-base leading-relaxed text-white";
+  const projectVideos = collectProjectVideos(node.project);
+  const mediaVideos = relatedVideos?.length ? relatedVideos : projectVideos;
 
   if (node.type === "project") {
     const hasDetails = node.project?.hasDetails && node.project;
@@ -68,7 +72,7 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
     const wrapperProps = hasDetails
       ? {
           type: "button",
-          className: `${baseClasses} w-full text-left cursor-pointer hover:border-[#c41a1a] transition-colors`,
+          className: `${baseClasses} w-full text-left cursor-pointer hover:border-[#FF0000] transition-colors`,
           onClick: () => onProjectClick?.(node.project),
         }
       : { className: baseClasses };
@@ -79,36 +83,28 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
           <div className="md:flex-1">
             <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <div>
-                <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
+                <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
                   {node.dateLabel} · PROJECT
                 </div>
-                <h3 className="mt-1 text-lg font-semibold text-neutral-50">
-                  {node.title}
-                </h3>
+                <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
               </div>
-              <div className="text-right text-xs text-neutral-500">
+              <div className="text-right text-xs text-white">
                 <span className="font-mono">{node.project?.id}</span>
-                {hasDetails && (
-                  <span className="ml-1 text-[#c41a1a] font-mono">→</span>
-                )}
+                {hasDetails && <span className="ml-1 font-mono text-[#FF0000]">→</span>}
               </div>
             </header>
-            {node.summary && (
-              <p className="mb-3 text-neutral-200 whitespace-pre-line">
-                {node.summary}
-              </p>
-            )}
+            {node.summary && <p className="mb-3 whitespace-pre-line text-white">{node.summary}</p>}
             {node.project?.highlights && (
-              <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+              <ul className="mt-2 space-y-1 text-sm text-white">
                 {node.project.highlights.slice(0, 3).map((h, idx) => (
                   <li key={idx} className="flex gap-2">
-                    <span className="mt-[5px] h-[1px] w-4 bg-neutral-700 shrink-0" />
+                    <span className="mt-[5px] h-[1px] w-4 shrink-0 bg-[#FF0000]" />
                     <span>{h}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {node.project?.links && node.project.links.length > 0 && (
+            {node.project?.links?.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {node.project.links.map((link, idx) => (
                   <a
@@ -116,8 +112,9 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
                     href={link.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sm border px-2 py-1 font-mono hover:border-[#c41a1a] transition-colors"
+                    className="border px-2 py-1 font-mono text-sm transition-colors hover:border-[#FF0000]"
                     style={{ borderColor: "#404040", color: ACCENT }}
+                    onClick={(event) => event.stopPropagation()}
                   >
                     {link.label}
                   </a>
@@ -125,19 +122,16 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             )}
             {node.project?.tags && (
-              <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-mono uppercase tracking-[0.16em] text-neutral-500">
+              <div className="mt-3 flex flex-wrap gap-1.5 font-mono text-xs uppercase tracking-[0.16em] text-white">
                 {node.project.tags.slice(0, 6).map((tag) => (
-                  <span
-                    key={tag}
-                    className="border border-neutral-700 px-1.5 py-0.5"
-                  >
+                  <span key={tag} className="border border-neutral-700 px-1.5 py-0.5 text-white">
                     {tag}
                   </span>
                 ))}
               </div>
             )}
           </div>
-          <NodeImages node={node} />
+          <NodeMedia node={node} videos={projectVideos} />
         </div>
       </Wrapper>
     );
@@ -151,40 +145,30 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
         <div className="md:flex md:items-stretch md:justify-between md:gap-4">
           <div className="md:flex-1">
             <header className="mb-2">
-              <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
                 {node.dateLabel} · EDUCATION
               </div>
-              <h3 className="mt-1 text-lg font-semibold text-neutral-50">
-                {node.title}
-              </h3>
+              <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
               {(org || node.program) && (
-                <p className="text-sm text-neutral-400">
-                  {[org, node.program, loc].filter(Boolean).join(" · ")}
-                </p>
+                <p className="text-sm text-white">{[org, node.program, loc].filter(Boolean).join(" · ")}</p>
               )}
             </header>
-            {node.summary && (
-              <p className="mb-3 text-base text-neutral-200 whitespace-pre-line">
-                {node.summary}
-              </p>
-            )}
-            {node.bullets && node.bullets.length > 0 && (
-              <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+            {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
+            {node.bullets?.length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm text-white">
                 {node.bullets.map((line, idx) => (
                   <li key={idx} className="flex gap-2">
-                    <span className="mt-[5px] h-[1px] w-3 bg-neutral-700 shrink-0" />
+                    <span className="mt-[5px] h-[1px] w-3 shrink-0 bg-[#FF0000]" />
                     <span>{line}</span>
                   </li>
                 ))}
               </ul>
             )}
             {node.semesters && (
-              <div className="mb-3 grid gap-2 text-sm text-neutral-300 md:grid-cols-2">
+              <div className="mb-3 grid gap-2 text-sm text-white md:grid-cols-2">
                 {node.semesters.map((sem) => (
                   <div key={sem.term}>
-                    <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                      {sem.term}
-                    </div>
+                    <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-white">{sem.term}</div>
                     <ul className="mt-1 space-y-0.5">
                       {sem.courses.map((course) => (
                         <li key={course}>{course}</li>
@@ -195,16 +179,12 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             )}
             {node.events && (
-              <div className="space-y-2 border-t border-neutral-800 pt-3 text-sm text-neutral-200">
+              <div className="space-y-2 border-t border-neutral-800 pt-3 text-sm text-white">
                 {node.events.map((event) => (
                   <div key={event.title}>
-                    <div className="font-mono text-xs uppercase tracking-[0.16em] text-neutral-500">
-                      {event.dateLabel}
-                    </div>
-                    <div className="text-sm font-semibold text-neutral-100">
-                      {event.title}
-                    </div>
-                    <p className="text-neutral-300">{event.description}</p>
+                    <div className="font-mono text-xs uppercase tracking-[0.16em] text-white">{event.dateLabel}</div>
+                    <div className="text-sm font-semibold text-white">{event.title}</div>
+                    <p className="text-white">{event.description}</p>
                     {event.links && (
                       <div className="mt-2 flex flex-wrap gap-2 text-sm">
                         {event.links.map((link) => (
@@ -213,7 +193,7 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
                             href={link.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="border border-neutral-700 px-2 py-1 font-mono text-xs hover:border-[#c41a1a]"
+                            className="border border-neutral-700 px-2 py-1 font-mono text-xs hover:border-[#FF0000]"
                             style={{ color: ACCENT }}
                           >
                             {link.label}
@@ -226,7 +206,7 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             )}
           </div>
-          <NodeImages node={node} />
+          <NodeMedia node={node} />
         </div>
       </article>
     );
@@ -240,27 +220,21 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
         <div className="md:flex md:items-stretch md:justify-between md:gap-4">
           <div className="md:flex-1">
             <header className="mb-2">
-              <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
                 {node.dateLabel} · CAREER
               </div>
-              <h3 className="mt-1 text-lg font-semibold text-neutral-50">
-                {node.title}
-              </h3>
-              <p className="text-sm text-neutral-400">
+              <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
+              <p className="text-sm text-white">
                 {node.organization}
                 {node.location ? ` · ${node.location}` : null}
               </p>
             </header>
-            {node.summary && (
-              <p className="mb-3 text-base text-neutral-200 whitespace-pre-line">
-                {node.summary}
-              </p>
-            )}
+            {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
             {node.bullets && (
-              <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+              <ul className="mt-2 space-y-1 text-sm text-white">
                 {node.bullets.map((line, idx) => (
                   <li key={idx} className="flex gap-2">
-                    <span className="mt-[5px] h-[1px] w-3 bg-neutral-700" />
+                    <span className="mt-[5px] h-[1px] w-3 bg-[#FF0000]" />
                     <span>{line}</span>
                   </li>
                 ))}
@@ -273,7 +247,7 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
                     key={id}
                     type="button"
                     onClick={() => onOpenProject(id)}
-                    className="text-sm border px-2 py-1 font-mono hover:border-[#c41a1a] transition-colors"
+                    className="border px-2 py-1 font-mono text-sm transition-colors hover:border-[#FF0000]"
                     style={{ borderColor: "#404040", color: ACCENT }}
                   >
                     {label} →
@@ -282,7 +256,7 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             )}
           </div>
-          <NodeImages node={node} />
+          <NodeMedia node={node} videos={mediaVideos} />
         </div>
       </article>
     );
@@ -294,189 +268,224 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
         <div className="md:flex md:items-stretch md:justify-between md:gap-4">
           <div className="md:flex-1">
             <header className="mb-2">
-              <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
                 {node.dateLabel} · TRIP
               </div>
-              <h3 className="mt-1 text-lg font-semibold text-neutral-50">
-                {node.title}
-              </h3>
-              {node.location && (
-                <p className="text-sm text-neutral-400">{node.location}</p>
-              )}
+              <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
+              {node.location && <p className="text-sm text-white">{node.location}</p>}
             </header>
-            {node.summary && (
-              <p className="mb-3 text-base text-neutral-200 whitespace-pre-line">
-                {node.summary}
-              </p>
-            )}
+            {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
             {node.notes && (
-              <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+              <ul className="mt-2 space-y-1 text-sm text-white">
                 {node.notes.map((line, idx) => (
                   <li key={idx}>{line}</li>
                 ))}
               </ul>
             )}
           </div>
-          <NodeImages node={node} />
+          <NodeMedia node={node} />
         </div>
       </article>
     );
   }
 
-  // life_event / default
   return (
     <article className={baseClasses}>
       <div className="md:flex md:items-stretch md:justify-between md:gap-4">
         <div className="md:flex-1">
           <header className="mb-2">
-            <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
+            <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
               {node.dateLabel} · LIFE
             </div>
-            <h3 className="mt-1 text-lg font-semibold text-neutral-50">
-              {node.title}
-            </h3>
-            {node.location && (
-              <p className="text-sm text-neutral-400">{node.location}</p>
-            )}
+            <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
+            {node.location && <p className="text-sm text-white">{node.location}</p>}
           </header>
-          {node.summary && (
-            <p className="mb-3 text-base text-neutral-200 whitespace-pre-line">
-              {node.summary}
-            </p>
-          )}
+          {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
           {node.details && (
-            <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+            <ul className="mt-2 space-y-1 text-sm text-white">
               {node.details.map((line, idx) => (
                 <li key={idx}>{line}</li>
               ))}
             </ul>
           )}
         </div>
-        <NodeImages node={node} />
+        <NodeMedia node={node} />
       </div>
     </article>
   );
 }
 
-export default function Portfolio() {
+/**
+ * @param {"page" | "monitor" | "fullscreen"} [mode="page"]
+ * @param {(controller: ((deltaY: number, deltaMode?: number) => boolean) | null) => void} [onScrollControllerChange]
+ */
+export default function Portfolio({
+  mode = "page",
+  onScrollControllerChange,
+  onBottomOverscroll,
+  className = "",
+  style,
+}) {
+  const embedded = mode === "monitor" || mode === "fullscreen";
   const { timeline, site, loading, error } = useContent();
   const [activeYear, setActiveYear] = useState(null);
   const [filter, setFilter] = useState("work");
   const [modalProject, setModalProject] = useState(null);
   const [returnToWorkOnModalClose, setReturnToWorkOnModalClose] = useState(false);
+  const [endSpacerPx, setEndSpacerPx] = useState(280);
   const timelineContainerRef = useRef(null);
+  const pinnedYearRef = useRef(null);
+  const pinReleaseTimerRef = useRef(null);
+  const overscrollHintAtRef = useRef(0);
 
   const hero = site?.hero || {};
   const contactEmail = site?.contact?.email || "Akshatshahi2006@gmail.com";
   const socials = Array.isArray(site?.socials)
     ? site.socials
     : [
-        {
-          id: "linkedin",
-          label: "LinkedIn",
-          url: "https://www.linkedin.com/in/akshat-shahi-651684217/",
-        },
-        {
-          id: "github",
-          label: "GitHub",
-          url: "https://github.com/Chikki06",
-        },
+        { id: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/in/akshat-shahi-651684217/" },
+        { id: "github", label: "GitHub", url: "https://github.com/Chikki06" },
       ];
+
+  const projectsById = useMemo(() => {
+    const map = new Map();
+    for (const node of Array.isArray(timeline) ? timeline : []) {
+      if (node.type === "project" && node.project?.id) map.set(node.project.id, node.project);
+    }
+    return map;
+  }, [timeline]);
 
   const filteredData = useMemo(() => {
     const base = Array.isArray(timeline) ? timeline : [];
-    if (filter === "work") {
-      return base.filter((n) => n.type === "career");
-    }
-    if (filter === "projects") {
-      return base.filter((n) => n.type === "project");
-    }
+    if (filter === "work") return base.filter((n) => n.type === "career");
+    if (filter === "projects") return base.filter((n) => n.type === "project");
     return base;
   }, [filter, timeline]);
 
-  const grouped = useMemo(() => {
-    return groupByYearPreservingOrder(filteredData);
-  }, [filteredData]);
+  const grouped = useMemo(() => groupByYearPreservingOrder(filteredData), [filteredData]);
 
   useEffect(() => {
     if (!grouped.years.length) return;
-    // First year in list (order comes from timeline array)
     setActiveYear(grouped.years[0]);
   }, [grouped.years]);
 
-  // Keep the active year in sync with scroll position inside the timeline container
-  // by tracking which year section is closest to a probe point in that container.
+  useEffect(() => () => clearTimeout(pinReleaseTimerRef.current), []);
+
+  // Enough trailing space that the last year can become majority-visible.
   useEffect(() => {
     const container = timelineContainerRef.current;
-    if (!container) return;
+    if (!container) return undefined;
+    const update = () => setEndSpacerPx(Math.max(Math.round(container.clientHeight * 0.45), 160));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [embedded, grouped.years, filter]);
+
+  const resolveActiveYearFromScroll = useCallback(() => {
+    const container = timelineContainerRef.current;
+    if (!container || !grouped.years.length) return null;
+
+    const { scrollTop, clientHeight, scrollHeight } = container;
+    const containerRect = container.getBoundingClientRect();
+    const viewTop = scrollTop;
+    const viewBottom = scrollTop + clientHeight;
+
+    // At the hard bottom, the last year always wins — thin cards included.
+    if (scrollTop + clientHeight >= scrollHeight - 3) {
+      return grouped.years[grouped.years.length - 1];
+    }
+
+    let bestYear = grouped.years[0];
+    let bestVisible = -1;
+    for (const year of grouped.years) {
+      const el = document.getElementById(`year-${year}`);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const sectionTop = rect.top - containerRect.top + scrollTop;
+      const sectionBottom = sectionTop + rect.height;
+      const visible = Math.max(0, Math.min(sectionBottom, viewBottom) - Math.max(sectionTop, viewTop));
+      if (visible > bestVisible) {
+        bestVisible = visible;
+        bestYear = year;
+      }
+    }
+    return bestYear;
+  }, [grouped.years]);
+
+  // Majority-visible year spy; clicks pin the destination until the smooth scroll settles.
+  useEffect(() => {
+    const container = timelineContainerRef.current;
+    if (!container) return undefined;
 
     const handleScroll = () => {
-      if (!grouped.years.length) return;
-
-      const scrollTop = container.scrollTop;
-      const containerRect = container.getBoundingClientRect();
-      const containerTop = scrollTop;
-      const containerBottom = scrollTop + (container.clientHeight || 0);
-
-      let bestYear = null;
-      let bestVisible = 0;
-
-      for (const year of grouped.years) {
-        const el = document.getElementById(`year-${year}`);
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        const sectionTop = rect.top - containerRect.top + scrollTop;
-        const sectionBottom = sectionTop + rect.height;
-
-        const visibleTop = Math.max(sectionTop, containerTop);
-        const visibleBottom = Math.min(sectionBottom, containerBottom);
-        const visibleHeight = Math.max(visibleBottom - visibleTop, 0);
-
-        if (visibleHeight > bestVisible) {
-          bestVisible = visibleHeight;
-          bestYear = year;
-        }
+      if (pinnedYearRef.current != null) {
+        setActiveYear(pinnedYearRef.current);
+        return;
       }
-
-      // Fallback to the most recent year if something goes wrong.
-      const nextYear = bestYear ?? grouped.years[0] ?? null;
-      if (nextYear !== null && nextYear !== activeYear) {
-        setActiveYear(nextYear);
-      }
+      const nextYear = resolveActiveYearFromScroll();
+      if (nextYear != null) setActiveYear((prev) => (prev === nextYear ? prev : nextYear));
     };
 
     handleScroll();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [grouped.years, activeYear]);
+  }, [grouped.years, resolveActiveYearFromScroll]);
 
-  // When timeline is at top/bottom, pass wheel through to page so one continuous
-  // scroll brings timeline into view, scrolls it, then continues the page.
+  // Fullscreen: keep scrolling at the bottom nudges the exit control.
   useEffect(() => {
+    if (mode !== "fullscreen" || !onBottomOverscroll) return undefined;
     const container = timelineContainerRef.current;
-    if (!container) return;
+    if (!container) return undefined;
 
+    const onWheel = (event) => {
+      if (event.deltaY <= 0) return;
+      const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 3;
+      if (!atBottom) return;
+      const now = performance.now();
+      if (now - overscrollHintAtRef.current < 700) return;
+      overscrollHintAtRef.current = now;
+      onBottomOverscroll();
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: true });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [mode, onBottomOverscroll]);
+
+  useEffect(() => {
+    if (embedded) return undefined;
+    const container = timelineContainerRef.current;
+    if (!container) return undefined;
     const BOUNDARY = 4;
-
     const onWheel = (e) => {
       const { scrollTop, clientHeight, scrollHeight } = container;
       const atTop = scrollTop <= BOUNDARY;
       const atBottom = scrollTop + clientHeight >= scrollHeight - BOUNDARY;
-      const scrollingDown = e.deltaY > 0;
-      const scrollingUp = e.deltaY < 0;
-
-      if (atBottom && scrollingDown) {
-        e.preventDefault();
-        window.scrollBy({ top: e.deltaY, left: 0, behavior: "auto" });
-      } else if (atTop && scrollingUp) {
+      if ((atBottom && e.deltaY > 0) || (atTop && e.deltaY < 0)) {
         e.preventDefault();
         window.scrollBy({ top: e.deltaY, left: 0, behavior: "auto" });
       }
     };
-
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => container.removeEventListener("wheel", onWheel);
+  }, [embedded]);
+
+  const consumeWheel = useCallback((deltaY, deltaMode = 0) => {
+    const element = timelineContainerRef.current;
+    if (!element) return false;
+    const delta = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? element.clientHeight : 1);
+    const atTop = element.scrollTop <= 0;
+    const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+    if ((delta < 0 && atTop) || (delta > 0 && atBottom) || delta === 0) return false;
+    element.scrollTop += delta;
+    return true;
   }, []);
+
+  useEffect(() => {
+    if (!onScrollControllerChange) return undefined;
+    onScrollControllerChange(consumeWheel);
+    return () => onScrollControllerChange(null);
+  }, [consumeWheel, onScrollControllerChange]);
 
   const openProjectById = useCallback((projectId) => {
     const timelineNode = Array.isArray(timeline)
@@ -498,69 +507,71 @@ export default function Portfolio() {
   }, [returnToWorkOnModalClose]);
 
   const handleYearClick = (year) => {
+    pinnedYearRef.current = year;
     setActiveYear(year);
+    clearTimeout(pinReleaseTimerRef.current);
+
     const container = timelineContainerRef.current;
-
-    if (container) {
-      // Ensure the whole timeline window itself is comfortably in view
-      // by scrolling the main page so the container sits below the hero header.
-      const containerRect = container.getBoundingClientRect();
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    if (!embedded) {
       const winScrollTop = window.scrollY || window.pageYOffset;
-      const PAGE_OFFSET = 110;
-      const pageTargetTop = Math.max(
-        containerRect.top + winScrollTop - PAGE_OFFSET,
-        0,
-      );
-      window.scrollTo({ top: pageTargetTop, behavior: "smooth" });
-
-      const el = document.getElementById(`year-${year}`);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        const scrollTop = container.scrollTop;
-        const scrollHeight = container.scrollHeight || 0;
-        const containerHeight = container.clientHeight || 0;
-
-        // Position of the section top within the scroll container:
-        const sectionTop = rect.top - containerRect.top + scrollTop;
-        const sectionHeight = rect.height;
-
-        // Try to center the clicked year section within the timeline window
-        // so navigation visibly moves, even when the user hasn't scrolled yet.
-        let targetY =
-          sectionTop - (containerHeight - sectionHeight) / 2;
-
-        // Clamp so that when navigating to the last card, its bottom is still visible.
-        const maxScroll = Math.max(scrollHeight - containerHeight, 0);
-        targetY = Math.min(Math.max(targetY, 0), maxScroll);
-
-        container.scrollTo({ top: targetY, behavior: "smooth" });
-        return;
-      }
+      window.scrollTo({
+        top: Math.max(containerRect.top + winScrollTop - 110, 0),
+        behavior: "smooth",
+      });
     }
+    const el = document.getElementById(`year-${year}`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const scrollTop = container.scrollTop;
+    const sectionTop = rect.top - containerRect.top + scrollTop;
+    const maxScroll = Math.max(container.scrollHeight - container.clientHeight, 0);
+    const targetY = Math.min(Math.max(sectionTop - 24, 0), maxScroll);
+    container.scrollTo({ top: targetY, behavior: "smooth" });
+
+    const releasePin = () => {
+      pinnedYearRef.current = null;
+      const nextYear = resolveActiveYearFromScroll();
+      if (nextYear != null) setActiveYear(nextYear);
+    };
+
+    const onScrollEnd = () => {
+      container.removeEventListener("scrollend", onScrollEnd);
+      clearTimeout(pinReleaseTimerRef.current);
+      releasePin();
+    };
+    container.addEventListener("scrollend", onScrollEnd, { once: true });
+    // Fallback for browsers without scrollend.
+    pinReleaseTimerRef.current = setTimeout(() => {
+      container.removeEventListener("scrollend", onScrollEnd);
+      releasePin();
+    }, 900);
   };
+
+  const rootClassName = [
+    "relative overflow-hidden text-white",
+    mode === "page" ? "min-h-screen" : "flex h-full min-h-0 flex-col",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden"
-      style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif" }}
+      className={rootClassName}
+      style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif", ...style }}
     >
-      <BackgroundFireOverlay />
-
-      {/* Hero: name + socials */}
       <header className="relative z-10 border-b border-neutral-900 px-4 py-10 md:px-8">
         <div className="mx-auto max-w-6xl">
-          <h1 className="text-3xl font-semibold tracking-tight text-neutral-50 md:text-4xl">
+          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
             {hero.name || "Akshat Kumar Shahi"}
           </h1>
-          {hero.tagline && (
-            <p className="mt-2 max-w-2xl text-base text-neutral-300">
-              {hero.tagline}
-            </p>
-          )}
+          {hero.tagline && <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>}
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-base">
             <a
               href={`mailto:${contactEmail}`}
-              className="flex items-center gap-2 border-b border-transparent hover:border-[#c41a1a] transition-colors"
+              className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
               style={{ color: ACCENT }}
             >
               <Mail className="h-5 w-5" />
@@ -569,15 +580,14 @@ export default function Portfolio() {
             {socials.map((social) => {
               const key = social.id || social.label || social.url;
               const id = (social.id || "").toLowerCase();
-              const Icon =
-                id === "github" ? Github : id === "linkedin" ? Linkedin : null;
+              const Icon = id === "github" ? Github : id === "linkedin" ? Linkedin : null;
               return (
                 <a
                   key={key}
                   href={social.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-2 border-b border-transparent hover:border-[#c41a1a] transition-colors"
+                  className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
                   style={{ color: ACCENT }}
                 >
                   {Icon && <Icon className="h-5 w-5" />}
@@ -589,35 +599,32 @@ export default function Portfolio() {
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto flex max-w-6xl gap-6 px-4 pb-16 pt-10 md:px-8 md:pt-14">
-        {/* Sticky year navigation */}
+      <div
+        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 pb-16 pt-10 md:px-8 md:pt-14 ${
+          embedded ? "min-h-0 flex-1" : ""
+        }`}
+      >
         <aside className="hidden w-32 shrink-0 md:block">
-          <div className="sticky top-16">
-            <div className="mb-4 text-xs font-mono uppercase tracking-[0.18em] text-neutral-500">
-              Years
-            </div>
+          <div className={embedded ? "sticky top-0" : "sticky top-16"}>
+            <div className="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-white">Years</div>
             <nav className="space-y-0.5 text-sm">
               {grouped.years.map((year) => {
                 const isActive = year === activeYear;
                 return (
                   <button
                     key={year}
+                    type="button"
                     onClick={() => handleYearClick(year)}
-                    className={`flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left font-mono transition-colors cursor-pointer ${
-                      isActive ? "" : "hover:border-neutral-500 hover:text-neutral-200"
+                    className={`flex w-full cursor-pointer items-center gap-2 border-l-2 px-2 py-1.5 text-left font-mono transition-colors ${
+                      isActive ? "" : "hover:border-white hover:text-white"
                     }`}
                     style={{
                       borderColor: isActive ? ACCENT : "#262626",
-                      color: isActive ? ACCENT : "#a3a3a3",
+                      color: isActive ? ACCENT : "#ffffff",
                     }}
                   >
                     <span>{year}</span>
-                    {isActive && (
-                      <span
-                        className="h-[1px] flex-1"
-                        style={{ backgroundColor: ACCENT }}
-                      />
-                    )}
+                    {isActive && <span className="h-[1px] flex-1" style={{ backgroundColor: ACCENT }} />}
                   </button>
                 );
               })}
@@ -625,26 +632,19 @@ export default function Portfolio() {
           </div>
         </aside>
 
-        {/* Timeline */}
-        <main className="flex-1">
-          <div
-            className="sticky top-0 z-20 border-b border-neutral-900 pb-4 pt-2"
-            style={{ backgroundColor: BG }}
-          >
+        <main className={`flex-1 ${embedded ? "flex min-h-0 flex-col" : ""}`}>
+          <div className="sticky top-0 z-20 border-b border-neutral-900 pb-4 pt-2" style={{ backgroundColor: BG }}>
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-xl font-semibold tracking-tight text-neutral-50">
-                Timeline
-              </h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">Timeline</h2>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono uppercase tracking-wider text-neutral-500">
-                  View
-                </span>
+                <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
                 <div className="flex border border-neutral-800 bg-neutral-950/80">
                   {FILTERS.map((f) => (
                     <button
                       key={f.value}
+                      type="button"
                       onClick={() => setFilter(f.value)}
-                      className="px-3 py-2 text-sm font-mono uppercase tracking-[0.14em] transition-colors cursor-pointer border-r border-neutral-800 last:border-r-0 hover:bg-neutral-800/80"
+                      className="cursor-pointer border-r border-neutral-800 px-3 py-2 font-mono text-sm uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80"
                       style={{
                         backgroundColor: filter === f.value ? ACCENT : "transparent",
                         color: filter === f.value ? BG : FG,
@@ -657,12 +657,12 @@ export default function Portfolio() {
               </div>
             </div>
             {loading && (
-              <div className="mt-2 text-xs font-mono uppercase tracking-[0.16em] text-neutral-500">
+              <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-white">
                 Loading latest content…
               </div>
             )}
             {error && (
-              <div className="mt-2 text-xs font-mono uppercase tracking-[0.16em] text-[#c41a1a]">
+              <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[#FF0000]">
                 Using bundled content. Admin API not reachable.
               </div>
             )}
@@ -670,73 +670,64 @@ export default function Portfolio() {
 
           <div
             ref={timelineContainerRef}
-            className="relative mt-6 overflow-y-auto"
-            style={{ maxHeight: "calc(100vh - 210px)" }}
+            className={`portfolio-scroll relative mt-6 overflow-y-auto ${embedded ? "mt-3 min-h-0 flex-1" : ""}`}
+            style={embedded ? undefined : { maxHeight: "calc(100vh - 210px)" }}
           >
-            <div className="absolute left-[10px] top-0 bottom-0 hidden w-px bg-neutral-900 md:block" />
+            <div className="absolute bottom-0 left-[10px] top-0 hidden w-px bg-neutral-900 md:block" />
 
             <div className="space-y-10">
               {grouped.years.map((year) => {
                 const nodesForYear = grouped.groupedMap.get(year) || [];
-                const yearNodes = nodesForYear.map((node) => (
-                  <TimelineNode
-                    key={node.id}
-                    node={node}
-                    onProjectClick={setModalProject}
-                    onOpenProject={openProjectById}
-                    relatedProjectLinks={
-                      node.type === "career" &&
-                      (node.organization?.includes("CISL") ||
-                        node.organization?.includes("Chemical Imaging") ||
-                        node.id === "2024-cisl-career")
-                        ? CISL_RELATED_PROJECT_IDS
-                        : undefined
-                    }
-                  />
-                ));
+                const yearNodes = nodesForYear.map((node) => {
+                  const isCislCareer =
+                    node.type === "career" &&
+                    (node.organization?.includes("CISL") ||
+                      node.organization?.includes("Chemical Imaging") ||
+                      node.id === "2024-cisl-career");
+                  const relatedVideos = isCislCareer
+                    ? CISL_RELATED_PROJECT_IDS.flatMap(({ id }) => collectProjectVideos(projectsById.get(id)))
+                    : undefined;
+                  return (
+                    <TimelineNode
+                      key={node.id}
+                      node={node}
+                      onProjectClick={setModalProject}
+                      onOpenProject={openProjectById}
+                      relatedProjectLinks={isCislCareer ? CISL_RELATED_PROJECT_IDS : undefined}
+                      relatedVideos={relatedVideos}
+                    />
+                  );
+                });
 
                 return (
-                  <section
-                    key={year}
-                    id={`year-${year}`}
-                    className="scroll-mt-20"
-                  >
+                  <section key={year} id={`year-${year}`} className="scroll-mt-6">
                     <div className="mb-3 flex items-center gap-3">
                       <div className="hidden items-center gap-3 md:flex">
                         <div
                           className="h-[9px] w-[9px] border"
                           style={{
                             borderColor: year === activeYear ? ACCENT : "#525252",
-                            backgroundColor:
-                              year === activeYear ? ACCENT : "transparent",
+                            backgroundColor: year === activeYear ? ACCENT : "transparent",
                           }}
                         />
-                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
-                          {year}
-                        </div>
+                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
                       </div>
                       <div className="md:hidden">
-                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral-500">
-                          {year}
-                        </div>
+                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
                       </div>
                       <div className="h-px flex-1 bg-neutral-900" />
                     </div>
-
                     <div className="space-y-3">{yearNodes}</div>
                   </section>
                 );
               })}
             </div>
+            <div aria-hidden="true" style={{ height: endSpacerPx }} />
           </div>
         </main>
       </div>
 
-      <ProjectModal
-        project={modalProject}
-        isOpen={!!modalProject}
-        onClose={handleCloseProjectModal}
-      />
+      <ProjectModal project={modalProject} isOpen={!!modalProject} onClose={handleCloseProjectModal} />
     </div>
   );
 }
