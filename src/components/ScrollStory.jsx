@@ -269,9 +269,11 @@ function getPolaroidFraming(fov, aspect) {
   const halfVerticalFov = Math.tan((fov * Math.PI) / 360);
   const footprintW = POLAROID_NATIVE.width * tuning.stackScale;
   const footprintD = POLAROID_NATIVE.depth * tuning.stackScale;
+  // Portrait phones: push in so the stack reads larger than the desktop overhead.
+  const fill = aspect < 0.8 ? Math.min(0.88, POLAROID_FRAME_FILL + 0.22) : POLAROID_FRAME_FILL;
   const distance = Math.max(
-    footprintW / (2 * halfVerticalFov * aspect * POLAROID_FRAME_FILL),
-    footprintD / (2 * halfVerticalFov * POLAROID_FRAME_FILL),
+    footprintW / (2 * halfVerticalFov * aspect * fill),
+    footprintD / (2 * halfVerticalFov * fill),
   );
   return {
     camera: { x: tuning.stackX, y: tuning.stackY + distance, z: tuning.stackZ },
@@ -282,14 +284,15 @@ function getPolaroidFraming(fov, aspect) {
 
 /** Overhead card distance from FOV + aspect so short landscape viewports get a closer read. */
 function cardFrameFill(aspect, viewHeightPx) {
+  // Portrait phones first — tall CSS height used to fall through to the loose 0.62 desktop fill.
+  if (aspect < 0.8) return 0.94;
   // Phone landscape is short in CSS pixels; keep type large. Desktop stays closer to the old ~0.55–0.6 fill.
   if (typeof viewHeightPx === "number" && viewHeightPx > 0) {
-    if (viewHeightPx < 480) return 0.9;
-    if (viewHeightPx < 640) return 0.8;
+    if (viewHeightPx < 480) return 0.92;
+    if (viewHeightPx < 640) return 0.84;
     return 0.62;
   }
   if (aspect > 1.3) return 0.86;
-  if (aspect < 0.8) return 0.72;
   return 0.62;
 }
 
@@ -311,9 +314,10 @@ function getCardFraming(fov, aspect, viewHeightPx) {
 function getStoryCameraPoses(fov, aspect, monitorTuning, viewHeightPx) {
   const narrow = aspect < 0.8;
   const halfVerticalFov = Math.tan((fov * Math.PI) / 360);
+  const monitorFill = narrow ? Math.min(0.98, monitorTuning.frameFill + 0.08) : monitorTuning.frameFill;
   const monitorDistance = Math.max(
-    (MONITOR_SCREEN.width * monitorTuning.modelScale) / (2 * halfVerticalFov * aspect * monitorTuning.frameFill),
-    (MONITOR_SCREEN.height * monitorTuning.modelScale) / (2 * halfVerticalFov * monitorTuning.frameFill),
+    (MONITOR_SCREEN.width * monitorTuning.modelScale) / (2 * halfVerticalFov * aspect * monitorFill),
+    (MONITOR_SCREEN.height * monitorTuning.modelScale) / (2 * halfVerticalFov * monitorFill),
   );
   const monitorY = monitorPosition(monitorTuning.modelScale)[1];
   const card = getCardFraming(fov, aspect, viewHeightPx);
@@ -925,9 +929,11 @@ function StoryCameraRig({ liftRef, spinRef, floatRef, rootRef, setPhase, setStor
     const refreshed = getStoryCameraPoses(camera.fov, viewport.aspect, monitorTuning, size.height);
     const flipPullY = refreshed.cardDistance * CARD_FLIP_PULL_FACTOR;
     const halfVerticalFov = Math.tan((camera.fov * Math.PI) / 360);
+    const letterWidthFill = narrow ? 0.72 : 0.5;
+    const letterHeightFill = narrow ? 0.82 : 0.6;
     const letterDistance = Math.max(
-      LETTER_SIZE.width / (2 * halfVerticalFov * viewport.aspect * 0.5),
-      LETTER_SIZE.height / (2 * halfVerticalFov * 0.6),
+      LETTER_SIZE.width / (2 * halfVerticalFov * viewport.aspect * letterWidthFill),
+      LETTER_SIZE.height / (2 * halfVerticalFov * letterHeightFill),
     );
     const letterCamera = {
       x: 0,
@@ -1146,14 +1152,18 @@ function StoryProgressNav({ phase, progress }) {
   const railRef = useRef(null);
   const expansionTimerRef = useRef(null);
   const [expandedChapter, setExpandedChapter] = useState(null);
+  // Top horizontal rail on phones; side vertical rail from sm up.
+  const isMobileNav = useMediaQuery("(max-width: 639px)");
   useEffect(() => () => clearTimeout(expansionTimerRef.current), []);
   const handleRailPointer = useCallback((event) => {
     const rail = railRef.current;
     if (!rail) return;
     const rect = rail.getBoundingClientRect();
-    const nav = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const nav = isMobileNav
+      ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+      : Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
     scrollToStoryProgress(navProgressToStoryProgress(nav), "auto");
-  }, []);
+  }, [isMobileNav]);
   const slots = Math.max(1, chapters.length - 1);
   // Nearest chapter within slack of the remapped fill — sticks highlight around short locks.
   let highlightIndex = -1;
@@ -1171,26 +1181,79 @@ function StoryProgressNav({ phase, progress }) {
     const nextIndex = Math.min(chapters.length - 1, Math.max(0, currentIndex + direction));
     scrollToStoryLabel(chapters[nextIndex].timelineLabel);
   }, [chapters, highlightIndex, progress, slots]);
+  const activeLabel = expandedChapter != null
+    ? chapters[expandedChapter]?.label
+    : (highlightIndex >= 0 ? chapters[highlightIndex]?.label : null);
 
-  return <nav style={{ zIndex: 11 }} className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2 sm:right-5" aria-label="Story chapters">
-    <div className="relative flex h-[min(52vh,360px)] min-h-56 w-11 flex-col items-center justify-between rounded-full border border-white/10 bg-gradient-to-b from-white/12 via-black/55 to-black/35 py-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl">
-      <div ref={railRef} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }} className="absolute inset-y-7 left-1/2 w-1 -translate-x-1/2 cursor-ns-resize rounded-full bg-black" role="slider" aria-label="Story progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); goToAdjacentChapter(-1); } if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); goToAdjacentChapter(1); } }}>
-        <span className="pointer-events-none absolute left-1/2 top-0 w-1 -translate-x-1/2 rounded-full bg-[#FF0000]" style={{ height: `${progress * 100}%` }} />
+  return (
+    <nav
+      style={{ zIndex: 11 }}
+      className="pointer-events-auto absolute left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] -translate-x-1/2 sm:left-auto sm:right-5 sm:top-1/2 sm:translate-x-0 sm:-translate-y-1/2"
+      aria-label="Story chapters"
+    >
+      <div className="relative flex h-11 w-[min(92vw,360px)] flex-row items-center justify-between rounded-full border border-white/10 bg-gradient-to-r from-white/12 via-black/55 to-black/35 px-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl sm:h-[min(52vh,360px)] sm:min-h-56 sm:w-11 sm:flex-col sm:bg-gradient-to-b sm:px-0 sm:py-3">
+        <div
+          ref={railRef}
+          onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }}
+          onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }}
+          className="absolute inset-x-7 top-1/2 h-1 -translate-y-1/2 cursor-ew-resize rounded-full bg-black sm:inset-x-auto sm:inset-y-7 sm:left-1/2 sm:top-auto sm:h-auto sm:w-1 sm:-translate-x-1/2 sm:translate-y-0 sm:cursor-ns-resize"
+          role="slider"
+          aria-label="Story progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress * 100)}
+          aria-orientation={isMobileNav ? "horizontal" : "vertical"}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); goToAdjacentChapter(-1); }
+            if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); goToAdjacentChapter(1); }
+          }}
+        >
+          <span
+            className="pointer-events-none absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[#FF0000] sm:left-1/2 sm:top-0 sm:h-auto sm:w-1 sm:-translate-x-1/2 sm:translate-y-0"
+            style={isMobileNav ? { width: `${progress * 100}%` } : { height: `${progress * 100}%` }}
+          />
+        </div>
+        {chapters.map((chapter, index) => {
+          const slot = index / slots;
+          const active = highlightIndex === index;
+          const completed = !active && progress >= slot;
+          const clickExpanded = expandedChapter === index;
+          const bubbleTone = active
+            ? "bg-[#FF0000] text-white shadow-[0_0_16px_rgba(255,0,0,0.55)]"
+            : completed
+              ? "bg-[#4a1010] text-[#ffb0b0] ring-1 ring-[#FF0000]/40 hover:bg-[#FF0000] hover:text-white hover:ring-[#FF0000]"
+              : "bg-black/80 text-white hover:bg-[#FF0000] hover:text-white";
+          return (
+            <button
+              key={chapter.label}
+              type="button"
+              onClick={() => {
+                setExpandedChapter(index);
+                clearTimeout(expansionTimerRef.current);
+                expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650);
+                scrollToStoryLabel(chapter.timelineLabel);
+              }}
+              aria-current={active ? "step" : undefined}
+              aria-label={chapter.label}
+              title={chapter.label}
+              className={`group relative z-10 flex h-7 w-7 shrink-0 items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] sm:mr-2 sm:self-end sm:hover:w-32 sm:focus-visible:w-32 ${clickExpanded && !isMobileNav ? "sm:w-32" : ""} ${bubbleTone}`}
+            >
+              <span>0{index + 1}</span>
+              <span className={`hidden max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 sm:inline sm:group-hover:ml-2 sm:group-hover:max-w-20 sm:group-hover:opacity-100 sm:group-focus-visible:ml-2 sm:group-focus-visible:max-w-20 sm:group-focus-visible:opacity-100 ${clickExpanded ? "sm:ml-2 sm:max-w-20 sm:opacity-100" : ""}`}>
+                {chapter.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
-      {chapters.map((chapter, index) => {
-        const slot = index / slots;
-        const active = highlightIndex === index;
-        const completed = !active && progress >= slot;
-        const clickExpanded = expandedChapter === index;
-        const bubbleTone = active
-          ? "bg-[#FF0000] text-white shadow-[0_0_16px_rgba(255,0,0,0.55)]"
-          : completed
-            ? "bg-[#4a1010] text-[#ffb0b0] ring-1 ring-[#FF0000]/40 hover:bg-[#FF0000] hover:text-white hover:ring-[#FF0000]"
-            : "bg-black/80 text-white hover:bg-[#FF0000] hover:text-white";
-        return <button key={chapter.label} type="button" onClick={() => { setExpandedChapter(index); clearTimeout(expansionTimerRef.current); expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650); scrollToStoryLabel(chapter.timelineLabel); }} aria-current={active ? "step" : undefined} className={`group relative z-10 mr-2 flex h-7 w-7 self-end items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 hover:w-32 focus-visible:w-32 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${clickExpanded ? "w-32" : ""} ${bubbleTone}`}><span>0{index + 1}</span><span className={`max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 ${clickExpanded ? "ml-2 max-w-20 opacity-100" : ""}`}>{chapter.label}</span></button>;
-      })}
-    </div>
-  </nav>;
+      {isMobileNav && activeLabel ? (
+        <p className="pointer-events-none mt-1.5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/70">
+          {activeLabel}
+        </p>
+      ) : null}
+    </nav>
+  );
 }
 
 function MonitorChromeControls({ fullscreen, onToggleFullscreen, exitHint = false, hint, shortcut }) {

@@ -15,6 +15,18 @@ const FILTERS = [
   { value: "work", label: "Work" },
 ];
 
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
+
 /** Modal payload from a project node or a career node with `detail`. */
 function detailFromNode(node) {
   if (!node) return null;
@@ -362,12 +374,16 @@ export default function Portfolio({
 }) {
   const embedded = mode === "monitor" || mode === "fullscreen";
   const isMonitor = mode === "monitor";
+  // Fullscreen static site on phones: one page scroll so Timeline locks under the top edge.
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const mobileUnifiedScroll = isMobile && mode === "fullscreen";
   const { timeline, site, loading, error } = useContent();
   const [activeYear, setActiveYear] = useState(null);
   const [filter, setFilter] = useState("all");
   const [modalProject, setModalProject] = useState(null);
   const [endSpacerPx, setEndSpacerPx] = useState(280);
   const [monitorOffset, setMonitorOffset] = useState(0);
+  const pageScrollRef = useRef(null);
   const timelineContainerRef = useRef(null);
   const timelineContentRef = useRef(null);
   const monitorOffsetRef = useRef(0);
@@ -405,7 +421,7 @@ export default function Portfolio({
 
   // Enough trailing space that the last year can become majority-visible.
   useEffect(() => {
-    const container = timelineContainerRef.current;
+    const container = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
     if (!container) return undefined;
     const update = () => {
       setEndSpacerPx(Math.max(Math.round(container.clientHeight * 0.45), 160));
@@ -424,14 +440,13 @@ export default function Portfolio({
     const content = timelineContentRef.current;
     if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [embedded, grouped.years, filter, isMonitor]);
+  }, [embedded, grouped.years, filter, isMonitor, mobileUnifiedScroll]);
 
   const getScrollMetrics = useCallback(() => {
-    const container = timelineContainerRef.current;
-    if (!container) return null;
     if (isMonitor) {
+      const container = timelineContainerRef.current;
       const content = timelineContentRef.current;
-      if (!content) return null;
+      if (!container || !content) return null;
       return {
         container,
         scrollTop: monitorOffsetRef.current,
@@ -439,13 +454,15 @@ export default function Portfolio({
         scrollHeight: content.offsetHeight,
       };
     }
+    const container = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
+    if (!container) return null;
     return {
       container,
       scrollTop: container.scrollTop,
       clientHeight: container.clientHeight,
       scrollHeight: container.scrollHeight,
     };
-  }, [isMonitor]);
+  }, [isMonitor, mobileUnifiedScroll]);
 
   const resolveActiveYearFromScroll = useCallback(() => {
     const metrics = getScrollMetrics();
@@ -502,16 +519,17 @@ export default function Portfolio({
     clearTimeout(pinReleaseTimerRef.current);
 
     const { years } = groupByYearPreservingOrder(nodesForFilter(timeline, nextFilter));
+    const scrollContainer = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
     const scrollTop = isMonitor
       ? 0
-      : timelineContainerRef.current?.scrollTop ?? 0;
+      : scrollContainer?.scrollTop ?? 0;
 
     if (isMonitor) {
       cancelAnimationFrame(monitorAnimRef.current);
       monitorOffsetRef.current = 0;
       setMonitorOffset(0);
-    } else if (timelineContainerRef.current && scrollTop < 8) {
-      timelineContainerRef.current.scrollTop = 0;
+    } else if (scrollContainer && scrollTop < 8) {
+      scrollContainer.scrollTop = 0;
     }
 
     setFilter(nextFilter);
@@ -525,18 +543,18 @@ export default function Portfolio({
 
   useEffect(() => {
     if (isMonitor) return undefined;
-    const container = timelineContainerRef.current;
+    const container = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
     if (!container) return undefined;
 
     const handleScroll = () => syncActiveYearFromScroll();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [grouped.years, isMonitor, syncActiveYearFromScroll]);
+  }, [grouped.years, isMonitor, mobileUnifiedScroll, syncActiveYearFromScroll]);
 
   // Fullscreen: keep scrolling at the bottom nudges the exit control.
   useEffect(() => {
     if (mode !== "fullscreen" || !onBottomOverscroll || modalProject) return undefined;
-    const container = timelineContainerRef.current;
+    const container = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
     if (!container) return undefined;
 
     const onWheel = (event) => {
@@ -551,7 +569,7 @@ export default function Portfolio({
 
     container.addEventListener("wheel", onWheel, { passive: true });
     return () => container.removeEventListener("wheel", onWheel);
-  }, [mode, modalProject, onBottomOverscroll]);
+  }, [mode, modalProject, mobileUnifiedScroll, onBottomOverscroll]);
 
   useEffect(() => {
     if (embedded) return undefined;
@@ -650,7 +668,8 @@ export default function Portfolio({
     const rect = el.getBoundingClientRect();
     const sectionTop = rect.top - containerRect.top + scrollTop;
     const maxScroll = Math.max(scrollHeight - clientHeight, 0);
-    const targetY = Math.min(Math.max(sectionTop - 24, 0), maxScroll);
+    const stickyClearance = mobileUnifiedScroll ? 72 : 24;
+    const targetY = Math.min(Math.max(sectionTop - stickyClearance, 0), maxScroll);
 
     const releasePin = () => {
       pinnedYearRef.current = null;
@@ -684,8 +703,11 @@ export default function Portfolio({
   };
 
   const rootClassName = [
-    "relative overflow-hidden text-white",
-    mode === "page" ? "min-h-screen" : "flex h-full min-h-0 flex-col",
+    "relative text-white",
+    mobileUnifiedScroll
+      ? `h-full portfolio-scroll ${modalProject ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`
+      : "overflow-hidden",
+    mode === "page" ? "min-h-screen" : mobileUnifiedScroll ? "" : "flex h-full min-h-0 flex-col",
     className,
   ]
     .filter(Boolean)
@@ -693,16 +715,17 @@ export default function Portfolio({
 
   return (
     <div
+      ref={mobileUnifiedScroll ? pageScrollRef : undefined}
       className={rootClassName}
       style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif", ...style }}
     >
-      <header className="relative z-10 border-b border-neutral-900 px-4 py-10 md:px-8">
+      <header className="relative z-10 border-b border-neutral-900 px-4 py-5 md:px-8 md:py-10">
         <div className="mx-auto max-w-6xl">
           <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
             {hero.name || "Akshat Kumar Shahi"}
           </h1>
           {hero.tagline && <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>}
-          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-base">
+          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-base md:mt-4">
             <a
               href={`mailto:${contactEmail}`}
               className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
@@ -734,8 +757,8 @@ export default function Portfolio({
       </header>
 
       <div
-        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 pb-16 pt-10 md:px-8 md:pt-14 ${
-          embedded ? "min-h-0 flex-1" : ""
+        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 pb-16 pt-3 md:px-8 md:pt-14 ${
+          embedded && !mobileUnifiedScroll ? "min-h-0 flex-1" : ""
         }`}
       >
         <aside className="hidden w-32 shrink-0 md:block">
@@ -766,9 +789,12 @@ export default function Portfolio({
           </div>
         </aside>
 
-        <main className={`flex-1 ${embedded ? "flex min-h-0 flex-col" : ""}`}>
-          <div className="sticky top-0 z-20 border-b border-neutral-900 pb-4 pt-2" style={{ backgroundColor: BG }}>
-            <div className="flex flex-wrap items-center justify-between gap-4">
+        <main className={`flex-1 ${embedded && !mobileUnifiedScroll ? "flex min-h-0 flex-col" : ""}`}>
+          <div
+            className="sticky top-0 z-20 border-b border-neutral-900 pb-3 pt-2 md:pb-4"
+            style={{ backgroundColor: BG }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
               <h2 className="text-xl font-semibold tracking-tight text-white">Timeline</h2>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
@@ -805,17 +831,19 @@ export default function Portfolio({
           <div
             ref={timelineContainerRef}
             className={`portfolio-scroll relative ${
-              modalProject
-                ? embedded
-                  ? "mt-3 min-h-0 flex-1 overflow-hidden"
-                  : "mt-6 overflow-hidden"
-                : mode === "monitor"
-                  ? "mt-3 min-h-0 flex-1 overflow-clip"
-                  : embedded
-                    ? "mt-3 min-h-0 flex-1 overflow-y-auto"
-                    : "mt-6 overflow-y-auto"
+              mobileUnifiedScroll
+                ? "mt-3"
+                : modalProject
+                  ? embedded
+                    ? "mt-3 min-h-0 flex-1 overflow-hidden"
+                    : "mt-6 overflow-hidden"
+                  : mode === "monitor"
+                    ? "mt-3 min-h-0 flex-1 overflow-clip"
+                    : embedded
+                      ? "mt-3 min-h-0 flex-1 overflow-y-auto"
+                      : "mt-6 overflow-y-auto"
             }`}
-            style={embedded ? undefined : { maxHeight: "calc(100vh - 210px)" }}
+            style={embedded || mobileUnifiedScroll ? undefined : { maxHeight: "calc(100vh - 210px)" }}
           >
             <div className="absolute bottom-0 left-[10px] top-0 hidden w-px bg-neutral-900 md:block" />
 
@@ -837,7 +865,7 @@ export default function Portfolio({
                   ));
 
                   return (
-                    <section key={year} id={`year-${year}`} className="scroll-mt-6">
+                    <section key={year} id={`year-${year}`} className="scroll-mt-20 md:scroll-mt-6">
                       <div className="mb-3 flex items-center gap-3">
                         <div className="hidden items-center gap-3 md:flex">
                           <div
