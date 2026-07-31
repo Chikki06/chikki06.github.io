@@ -27,6 +27,7 @@ const DEMO_BY_PROJECT_ID = {
   aerocast: { src: "/assets/aerocast.webm", href: "https://github.com/Chikki06/aerocast" },
   synapse: { src: "/assets/synapse.webm", href: "https://devpost.com/software/synapse-dx7hcr" },
   "cisl-platform": { src: "/assets/remotegpu.webm", href: "https://youtu.be/V6QrnFpiEwM" },
+  "portfolio-site": { src: "/assets/site.webm", href: "https://akshatshahi.com" },
 };
 
 function resolveNodeDemo(node) {
@@ -1196,7 +1197,7 @@ function StoryProgressNav({ phase, progress }) {
           ref={railRef}
           onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }}
           onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }}
-          className="absolute inset-x-7 top-1/2 h-1 -translate-y-1/2 cursor-ew-resize rounded-full bg-black sm:inset-x-auto sm:inset-y-7 sm:left-1/2 sm:top-auto sm:h-auto sm:w-1 sm:-translate-x-1/2 sm:translate-y-0 sm:cursor-ns-resize"
+          className="absolute inset-x-7 top-1/2 h-1 -translate-y-1/2 cursor-ew-resize rounded-full bg-black sm:inset-x-auto sm:inset-y-7 sm:left-1/2 sm:h-auto sm:w-1 sm:-translate-x-1/2 sm:translate-y-0 sm:cursor-ns-resize"
           role="slider"
           aria-label="Story progress"
           aria-valuemin={0}
@@ -1210,7 +1211,7 @@ function StoryProgressNav({ phase, progress }) {
           }}
         >
           <span
-            className="pointer-events-none absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[#FF0000] sm:left-1/2 sm:top-0 sm:h-auto sm:w-1 sm:-translate-x-1/2 sm:translate-y-0"
+            className="pointer-events-none absolute left-0 top-0 h-full rounded-full bg-[#FF0000] sm:left-1/2 sm:w-full sm:-translate-x-1/2"
             style={isMobileNav ? { width: `${progress * 100}%` } : { height: `${progress * 100}%` }}
           />
         </div>

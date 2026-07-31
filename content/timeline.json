@@ -247,7 +247,12 @@
         "drei",
         "html-to-image",
         "Vite"
-      ]
+      ],
+      "demo": {
+        "src": "/assets/site.webm",
+        "href": "https://akshatshahi.com",
+        "label": "Live site"
+      }
     },
     "tags": ["web", "3d", "portfolio"]
   },
