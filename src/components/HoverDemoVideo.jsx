@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getCachedDemoSrc } from "../lib/demoVideoCache.js";
 
 /** Normalize a demo object from project.detail / project.demo / legacy videoUrl. */
 export function resolveDemo(source) {
@@ -34,8 +35,8 @@ function isLocalVideo(src) {
 /**
  * Autoplaying muted loop for local webm/mp4. Click opens href when set.
  * Falls back to a simple link for non-local URLs.
- * Local files only attach `src` once near the viewport so ~20MB of demos
- * do not compete with the first paint of the static portfolio.
+ * Local files only attach media once near the viewport, and share a session
+ * blob cache so opening the modal does not re-download the same webm.
  */
 export default function HoverDemoVideo({
   url,
@@ -52,6 +53,7 @@ export default function HoverDemoVideo({
   const containerRef = useRef(null);
   const mediaSrc = src || url;
   const [inView, setInView] = useState(false);
+  const [playbackSrc, setPlaybackSrc] = useState(null);
   const shouldLoad = Boolean(enabled && mediaSrc && inView);
 
   useEffect(() => {
@@ -76,8 +78,26 @@ export default function HoverDemoVideo({
   }, [enabled, mediaSrc]);
 
   useEffect(() => {
+    if (!shouldLoad || !mediaSrc) {
+      setPlaybackSrc(null);
+      return undefined;
+    }
+    if (!isLocalVideo(mediaSrc)) {
+      setPlaybackSrc(mediaSrc);
+      return undefined;
+    }
+    let cancelled = false;
+    getCachedDemoSrc(mediaSrc).then((resolved) => {
+      if (!cancelled) setPlaybackSrc(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldLoad, mediaSrc]);
+
+  useEffect(() => {
     const video = videoRef.current;
-    if (!video || !autoPlay || !shouldLoad) return undefined;
+    if (!video || !autoPlay || !playbackSrc) return undefined;
     video.muted = true;
     const play = () => {
       video.play().catch(() => {});
@@ -85,7 +105,7 @@ export default function HoverDemoVideo({
     play();
     video.addEventListener("loadeddata", play);
     return () => video.removeEventListener("loadeddata", play);
-  }, [shouldLoad, autoPlay]);
+  }, [playbackSrc, autoPlay]);
 
   if (!mediaSrc) return null;
 
@@ -96,15 +116,15 @@ export default function HoverDemoVideo({
     >
       <div className="relative aspect-video w-full">
         {isLocalVideo(mediaSrc) ? (
-          shouldLoad ? (
+          playbackSrc ? (
             <video
               ref={videoRef}
-              src={mediaSrc}
+              src={playbackSrc}
               muted
               loop
               playsInline
               autoPlay={autoPlay}
-              preload="metadata"
+              preload="auto"
               className="absolute inset-0 h-full w-full object-cover"
               aria-label={title}
             />

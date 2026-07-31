@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html, useTexture } from "@react-three/drei";
+import { Html, useGLTF, useTexture } from "@react-three/drei";
 import { ClampToEdgeWrapping, DoubleSide, SRGBColorSpace } from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -8,12 +8,14 @@ import { ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import { useContent } from "../hooks/useContent.js";
 import Portfolio from "./Portfolio.jsx";
 import ProjectModal from "./ProjectModal.jsx";
+import HoverDemoVideo from "./HoverDemoVideo.jsx";
 import BakedHtmlFace from "./BakedHtmlFace.jsx";
 import BusinessCardFront from "./storyFaces/BusinessCardFront.jsx";
 import BusinessCardBack from "./storyFaces/BusinessCardBack.jsx";
 import LetterFace from "./storyFaces/LetterFace.jsx";
 import { createStoryData, projectSummary, projectTitle } from "./storyData.js";
 import { ensureStoryFonts } from "../lib/storyFonts.js";
+import { getCachedDemoSrc } from "../lib/demoVideoCache.js";
 import { Model as MonitorModel } from "../models/Monitor.jsx";
 import { Model as PolaroidModel } from "../models/Polaroid.jsx";
 import { Model as PolaroidCameraModel } from "../models/Camera.jsx";
@@ -24,12 +26,57 @@ const PAPER = "/assets/card.webp";
 const ENVELOPE = "/assets/envelope.webp";
 const TABLE = "/assets/table.webp";
 const WALL = "/assets/wall.webp";
+const DESK_TEXTURES = [PAPER, ENVELOPE, TABLE, WALL];
+const MONITOR_GLTF = "/assets/monitor/scene.gltf";
+const POLAROID_GLTF = "/assets/polaroid/scene.gltf";
+const CAMERA_GLTF = "/assets/camera/scene.gltf";
 const DEMO_BY_PROJECT_ID = {
   aerocast: { src: "/assets/aerocast.webm", href: "https://github.com/Chikki06/aerocast" },
   synapse: { src: "/assets/synapse.webm", href: "https://devpost.com/software/synapse-dx7hcr" },
   "cisl-platform": { src: "/assets/remotegpu.webm", href: "https://youtu.be/V6QrnFpiEwM" },
   "portfolio-site": { src: "/assets/site.webm", href: "https://akshatshahi.com" },
 };
+
+/** Wait until imgs under `root` have settled (or timeout). Used so 3D assets don't steal bandwidth. */
+function whenImagesSettled(root, timeoutMs = 4500) {
+  return new Promise((resolve) => {
+    const imgs = root ? Array.from(root.querySelectorAll("img")) : [];
+    if (!imgs.length) {
+      resolve();
+      return;
+    }
+    let pending = imgs.length;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const onOne = () => {
+      pending -= 1;
+      if (pending <= 0) finish();
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    for (const img of imgs) {
+      if (img.complete) onOne();
+      else {
+        img.addEventListener("load", onOne, { once: true });
+        img.addEventListener("error", onOne, { once: true });
+      }
+    }
+  });
+}
+
+/** Warm drei's loader cache for desk planes + GLTFs (camera.bin rides along with CAMERA_GLTF). */
+function preloadStoryAssets({ heavy = false } = {}) {
+  for (const src of DESK_TEXTURES) useTexture.preload(src);
+  useGLTF.preload(MONITOR_GLTF);
+  if (heavy) {
+    useGLTF.preload(POLAROID_GLTF);
+    useGLTF.preload(CAMERA_GLTF);
+  }
+}
 
 function resolveNodeDemo(node) {
   const fromProject = node?.project?.demo;
@@ -471,6 +518,7 @@ function VideoThumbnail({ node, index, title, compact = false }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [inView, setInView] = useState(false);
+  const [playbackSrc, setPlaybackSrc] = useState(null);
   const demo = demoSourceForNode(node, index);
   const shouldLoad = Boolean(demo?.src && inView);
   const playPreview = () => videoRef.current?.play().catch(() => {});
@@ -500,6 +548,19 @@ function VideoThumbnail({ node, index, title, compact = false }) {
     observer.observe(nodeEl);
     return () => observer.disconnect();
   }, [demo?.src]);
+  useEffect(() => {
+    if (!shouldLoad || !demo?.src) {
+      setPlaybackSrc(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getCachedDemoSrc(demo.src).then((resolved) => {
+      if (!cancelled) setPlaybackSrc(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldLoad, demo?.src]);
   if (!demo?.src) return null;
   return (
     <div
@@ -508,15 +569,15 @@ function VideoThumbnail({ node, index, title, compact = false }) {
       onPointerLeave={stopPreview}
       className={`group relative overflow-hidden bg-black ${compact ? "aspect-video rounded" : "aspect-video rounded-md"}`}
     >
-      {shouldLoad ? (
+      {playbackSrc ? (
         <video
           ref={videoRef}
-          src={demo.src}
+          src={playbackSrc}
           muted
           loop
           playsInline
           autoPlay
-          preload="metadata"
+          preload="auto"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           aria-label={`${title} demo preview`}
         />
@@ -621,22 +682,12 @@ function MonitorProjectDetail({ node, index, projects, onSelect, onClose, scroll
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)_190px] gap-4">
         <div>
           {demo?.src && (
-            <a
-              href={demo.href || undefined}
-              target={demo.href ? "_blank" : undefined}
-              rel={demo.href ? "noreferrer" : undefined}
-              className={demo.href ? "block" : undefined}
-            >
-              <video
-                src={demo.src}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="aspect-video w-full rounded-md bg-black object-cover"
-                aria-label={`${projectTitle(node)} demo`}
-              />
-            </a>
+            <HoverDemoVideo
+              src={demo.src}
+              href={demo.href}
+              title={`${projectTitle(node)} demo`}
+              className="rounded-md"
+            />
           )}
           <section className="mt-4">
             <h3 className="font-mono text-[10px] uppercase tracking-[.18em] text-amber-300">Overview</h3>
@@ -1412,7 +1463,7 @@ export default function ScrollStory() {
   // Mount WebGL only after the static portfolio has had network priority (or on 3D intent).
   const [sceneEnabled, setSceneEnabled] = useState(false);
   const [shellReady, setShellReady] = useState(false);
-  // Polaroid + camera GLTFs (~1.2MB) wait until the scroll story is active.
+  // Polaroid + camera GLTFs (camera.bin is large): desktop after shell warm; mobile after story entry.
   const [heavyPropsEnabled, setHeavyPropsEnabled] = useState(false);
   const [exitHint, setExitHint] = useState(false);
   const [monitorEdgeHint, setMonitorEdgeHint] = useState(null); // "top" | "bottom" | null
@@ -1576,22 +1627,38 @@ export default function ScrollStory() {
     }
   }, [runIntroCrossfade]);
 
-  // Let the static portfolio claim bandwidth first, then warm the desk/monitor shell.
+  // After static portfolio textures settle, warm the desk/monitor shell.
+  // Desktop also starts fetching every 3D GLTF (incl. camera.bin) in parallel.
   useEffect(() => {
     if (reducedMotion || !webgl) return undefined;
     if (!showSiteOverlay) return undefined;
-    const warm = () => {
-      if (experiencePref.current === "static") return;
-      setSceneEnabled(true);
-    };
+    let cancelled = false;
     let idleId;
     let timeoutId;
-    if (typeof requestIdleCallback === "function") {
-      idleId = requestIdleCallback(warm, { timeout: 2200 });
-    } else {
-      timeoutId = window.setTimeout(warm, 1400);
-    }
+
+    const warm = () => {
+      if (cancelled || experiencePref.current === "static") return;
+      const desktop = isDesktopRef.current;
+      preloadStoryAssets({ heavy: desktop });
+      setSceneEnabled(true);
+    };
+
+    const start = async () => {
+      // Two frames so Portfolio can commit its <img>s into the overlay.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (cancelled) return;
+      await whenImagesSettled(overlayRef.current);
+      if (cancelled || experiencePref.current === "static") return;
+      if (typeof requestIdleCallback === "function") {
+        idleId = requestIdleCallback(warm, { timeout: 800 });
+      } else {
+        timeoutId = window.setTimeout(warm, 200);
+      }
+    };
+    start();
+
     return () => {
+      cancelled = true;
       if (idleId != null) window.cancelIdleCallback?.(idleId);
       if (timeoutId != null) window.clearTimeout(timeoutId);
     };
@@ -1607,9 +1674,15 @@ export default function ScrollStory() {
     return undefined;
   }, [sceneEnabled]);
 
-  // Camera + polaroid (~1.2MB) only after the user is in the scroll story.
+  // Heavy GLTFs (camera.bin + polaroid): desktop mounts once the shell is ready
+  // under the overlay; mobile still waits until the scroll story is active.
   useEffect(() => {
     if (!sceneEnabled || !shellReady) return undefined;
+    if (isDesktop) {
+      preloadStoryAssets({ heavy: true });
+      setHeavyPropsEnabled(true);
+      return undefined;
+    }
     if (showSiteOverlay || introPhase) return undefined;
     const enableHeavy = () => setHeavyPropsEnabled(true);
     let idleId;
@@ -1623,7 +1696,7 @@ export default function ScrollStory() {
       if (idleId != null) window.cancelIdleCallback?.(idleId);
       if (timeoutId != null) window.clearTimeout(timeoutId);
     };
-  }, [introPhase, sceneEnabled, shellReady, showSiteOverlay]);
+  }, [introPhase, isDesktop, sceneEnabled, shellReady, showSiteOverlay]);
 
   // Pin monitor under the DOM portfolio, crossfade the overlay away, then pan to card 1.
   const beginExperienceIntro = useCallback(() => {
@@ -1642,7 +1715,10 @@ export default function ScrollStory() {
     setStoryProgress(0);
     setCardFace("front");
     setIntroPhase("pin-monitor");
+    // Choosing 3D early: pull in the full asset set (desktop includes camera.bin).
+    preloadStoryAssets({ heavy: isDesktopRef.current });
     setSceneEnabled(true);
+    if (isDesktopRef.current) setHeavyPropsEnabled(true);
 
     if (shellReady) {
       runIntroCrossfade();
