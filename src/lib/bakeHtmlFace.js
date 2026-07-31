@@ -1,5 +1,6 @@
 import { toCanvas } from "html-to-image";
 import { CanvasTexture, SRGBColorSpace } from "three";
+import { ensureStoryFonts } from "./storyFonts.js";
 
 /** Mark interactive elements with this attribute so bake can collect mesh hitboxes. */
 export const BAKE_HITBOX_ATTR = "data-bake-hitbox";
@@ -30,9 +31,22 @@ function waitForImages(root) {
   return Promise.all(
     images.map((image) => {
       if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+      // Force a decode after load so html-to-image doesn't race an undecoded frame.
       return new Promise((resolve) => {
-        image.addEventListener("load", resolve, { once: true });
+        const done = () => {
+          if (typeof image.decode === "function") {
+            image.decode().then(resolve, resolve);
+          } else {
+            resolve();
+          }
+        };
+        image.addEventListener("load", done, { once: true });
         image.addEventListener("error", resolve, { once: true });
+        // Cached-but-undecoded images: re-touch src so load/decode can settle.
+        if (!image.complete && image.src) {
+          const { src } = image;
+          image.src = src;
+        }
       });
     }),
   );
@@ -55,7 +69,7 @@ function nextFrame() {
 export async function bakeHtmlFace(element, { pixelRatio = 2 } = {}) {
   if (!element) throw new Error("bakeHtmlFace requires a mounted HTML element");
 
-  await document.fonts.ready;
+  await ensureStoryFonts();
   await waitForImages(element);
   // Two frames so Tailwind layout / webfonts settle before capture.
   await nextFrame();
@@ -65,12 +79,13 @@ export async function bakeHtmlFace(element, { pixelRatio = 2 } = {}) {
   const height = Math.max(1, Math.round(element.offsetHeight));
   const hitboxes = collectBakeHitboxes(element);
 
+  // Same-origin assets: cacheBust appends ?t=… and intermittently 404s/fails on Pages.
   const canvas = await toCanvas(element, {
     width,
     height,
     pixelRatio,
     backgroundColor: null,
-    cacheBust: true,
+    cacheBust: false,
     style: {
       transform: "none",
       // Capture at the authored size even if the host is scaled.

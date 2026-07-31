@@ -374,11 +374,7 @@
       "uri": "scene.bin"
     }
   ],
-  "images": [
-    {
-      "uri": "textures/RenderMonitor_baseColor.png"
-    }
-  ],
+  "images": [],
   "materials": [
     {
       "doubleSided": true,
@@ -397,11 +393,14 @@
       "doubleSided": true,
       "name": "RenderMonitor",
       "pbrMetallicRoughness": {
-        "baseColorTexture": {
-          "index": 0
-        },
+        "baseColorFactor": [
+          0.01,
+          0.01,
+          0.02,
+          1.0
+        ],
         "metallicFactor": 0.0,
-        "roughnessFactor": 0.9847274229980322
+        "roughnessFactor": 0.45
       }
     },
     {
@@ -720,7 +719,7 @@
         7.999999999999894,
         -1.3033654351346513e-06,
         0.0,
-        -792.2214965820313,
+        -792.2214965820312,
         -496.8316650390625,
         27.90166664123535,
         1.0
@@ -732,14 +731,7 @@
       "name": "Button two.001_ButtonTwoMaterial.001_0"
     }
   ],
-  "samplers": [
-    {
-      "magFilter": 9729,
-      "minFilter": 9987,
-      "wrapS": 10497,
-      "wrapT": 10497
-    }
-  ],
+  "samplers": [],
   "scene": 0,
   "scenes": [
     {
@@ -749,10 +741,5 @@
       ]
     }
   ],
-  "textures": [
-    {
-      "sampler": 0,
-      "source": 0
-    }
-  ]
+  "textures": []
 }

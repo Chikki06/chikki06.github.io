@@ -7,11 +7,24 @@ Source: https://sketchfab.com/3d-models/monitor-9f6f9018f14a4dbea1ad1aea0ce89e7c
 Title: Monitor
 */
 
-import React from 'react'
+import { useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
 
 export function Model(props) {
   const { nodes, materials } = useGLTF('/assets/monitor/scene.gltf')
+
+  // Screen is covered by the live Html portfolio — keep a flat dark panel, never a photo texture.
+  useEffect(() => {
+    const screen = materials.RenderMonitor
+    if (!screen) return undefined
+    screen.map = null
+    screen.color.set('#020617')
+    screen.roughness = 0.45
+    screen.metalness = 0
+    screen.needsUpdate = true
+    return undefined
+  }, [materials])
+
   return (
     <group {...props} dispose={null}>
       <group position={[-1575.703, 30, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={100}>

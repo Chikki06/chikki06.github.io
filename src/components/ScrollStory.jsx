@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, Html, useTexture } from "@react-three/drei";
+import { Html, useTexture } from "@react-three/drei";
 import { ClampToEdgeWrapping, DoubleSide, SRGBColorSpace } from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -13,6 +13,7 @@ import BusinessCardFront from "./storyFaces/BusinessCardFront.jsx";
 import BusinessCardBack from "./storyFaces/BusinessCardBack.jsx";
 import LetterFace from "./storyFaces/LetterFace.jsx";
 import { createStoryData, projectSummary, projectTitle } from "./storyData.js";
+import { ensureStoryFonts } from "../lib/storyFonts.js";
 import { Model as MonitorModel } from "../models/Monitor.jsx";
 import { Model as PolaroidModel } from "../models/Polaroid.jsx";
 import { Model as PolaroidCameraModel } from "../models/Camera.jsx";
@@ -1127,8 +1128,12 @@ function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgres
   // While the monitor Html is live, disable pointer events on the WebGL canvas so it can't
   // capture clicks meant for links/buttons on the CSS3D screen.
   return <Canvas shadows dpr={[1, 2]} camera={{ fov: 43, position: [0, 6.5, 1.25] }} gl={{ antialias: true, powerPreference: "high-performance" }} style={monitorInteractive ? { pointerEvents: "none" } : undefined}>
-    <ambientLight intensity={0.8} /><directionalLight castShadow position={[4, 8, 3]} intensity={2.4} shadow-mapSize={[1024, 1024]} />
-    <Suspense fallback={null}><Environment preset="apartment" /></Suspense>
+    {/* Local lights only — Environment preset="apartment" pulled lebombo_1k.hdr from a CDN. */}
+    <hemisphereLight args={["#f3efe6", "#1a1a1a", 0.55]} />
+    <ambientLight intensity={0.55} />
+    <directionalLight castShadow position={[4, 8, 3]} intensity={2.15} shadow-mapSize={[1024, 1024]} />
+    <directionalLight position={[-3, 4, -2]} intensity={0.55} />
+    <directionalLight position={[2, 2, 5]} intensity={0.35} color="#c8d7ff" />
     <Suspense fallback={null}>
       <Wall /><Desk /><BusinessCard liftRef={liftRef} spinRef={spinRef} cardFace={cardFace} data={data} />
       <Letter data={data} />
@@ -1407,7 +1412,7 @@ export default function ScrollStory() {
   // Mount WebGL only after the static portfolio has had network priority (or on 3D intent).
   const [sceneEnabled, setSceneEnabled] = useState(false);
   const [shellReady, setShellReady] = useState(false);
-  // Polaroid + camera GLTFs (~19MB) wait until the scroll story is active.
+  // Polaroid + camera GLTFs (~1.2MB) wait until the scroll story is active.
   const [heavyPropsEnabled, setHeavyPropsEnabled] = useState(false);
   const [exitHint, setExitHint] = useState(false);
   const [monitorEdgeHint, setMonitorEdgeHint] = useState(null); // "top" | "bottom" | null
@@ -1592,7 +1597,17 @@ export default function ScrollStory() {
     };
   }, [reducedMotion, showSiteOverlay, webgl]);
 
-  // Camera + polaroid (~19MB) only after the user is in the scroll story.
+  // Story-face fonts + stamp only when the 3D shell is actually mounting (not on static landing).
+  useEffect(() => {
+    if (!sceneEnabled) return undefined;
+    ensureStoryFonts();
+    const stamp = new Image();
+    stamp.decoding = "async";
+    stamp.src = "/assets/stamp.webp";
+    return undefined;
+  }, [sceneEnabled]);
+
+  // Camera + polaroid (~1.2MB) only after the user is in the scroll story.
   useEffect(() => {
     if (!sceneEnabled || !shellReady) return undefined;
     if (showSiteOverlay || introPhase) return undefined;

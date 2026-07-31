@@ -21,7 +21,7 @@ const GROUND_OFFSET = [-10.7931, -13.6185, 3.0987]
 export function Model(props) {
   const { nodes, materials } = useGLTF(PATH)
 
-  // Frameblinn2SG ships with roughness 0 — keep the gloss so Environment can catch highlights.
+  // Frameblinn2SG ships with roughness 0 — keep the gloss so scene lights catch highlights.
   useEffect(() => {
     const glossy = materials.Frameblinn2SG
     if (!glossy) return undefined

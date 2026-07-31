@@ -17,7 +17,14 @@ export default function LetterFace({ data }) {
           className="relative flex h-[78px] w-[78px] -rotate-6 items-center justify-center"
           aria-label="Akshat on LinkedIn"
         >
-          <img src="/assets/stamp.webp" alt="" className="absolute inset-0 h-full w-full object-contain" />
+          <img
+            src="/assets/stamp.webp"
+            alt=""
+            width={78}
+            height={78}
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-contain"
+          />
           <Linkedin className="relative h-5 w-5 text-[#7d4430]" />
         </a>
         <a
@@ -28,7 +35,14 @@ export default function LetterFace({ data }) {
           className="relative flex h-[78px] w-[78px] rotate-3 items-center justify-center"
           aria-label="Akshat on GitHub"
         >
-          <img src="/assets/stamp.webp" alt="" className="absolute inset-0 h-full w-full object-contain" />
+          <img
+            src="/assets/stamp.webp"
+            alt=""
+            width={78}
+            height={78}
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-contain"
+          />
           <Github className="relative h-5 w-5 text-[#7d4430]" />
         </a>
       </div>

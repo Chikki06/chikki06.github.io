@@ -374,9 +374,10 @@ export default function Portfolio({
 }) {
   const embedded = mode === "monitor" || mode === "fullscreen";
   const isMonitor = mode === "monitor";
-  // Fullscreen static site on phones: one page scroll so Timeline locks under the top edge.
-  const isMobile = useMediaQuery("(max-width: 767px)");
-  const mobileUnifiedScroll = isMobile && mode === "fullscreen";
+  // Phones + short landscape (width often >767 but height is tiny) need one-page scroll.
+  const isCompact = useMediaQuery("(max-width: 767px), ((max-height: 540px) and (max-width: 1100px))");
+  const isShort = useMediaQuery("(max-height: 540px)");
+  const mobileUnifiedScroll = isCompact && mode === "fullscreen";
   const { timeline, site, loading, error } = useContent();
   const [activeYear, setActiveYear] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -719,20 +720,34 @@ export default function Portfolio({
       className={rootClassName}
       style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif", ...style }}
     >
-      <header className="relative z-10 border-b border-neutral-900 px-4 py-5 md:px-8 md:py-10">
+      <header
+        className={`relative z-10 border-b border-neutral-900 px-4 md:px-8 ${
+          isShort ? "py-2.5" : "py-5 md:py-10"
+        }`}
+      >
         <div className="mx-auto max-w-6xl">
-          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+          <h1
+            className={`font-semibold tracking-tight text-white ${
+              isShort ? "text-xl leading-tight" : "text-3xl md:text-4xl"
+            }`}
+          >
             {hero.name || "Akshat Kumar Shahi"}
           </h1>
-          {hero.tagline && <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>}
-          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-base md:mt-4">
+          {hero.tagline && !isShort && (
+            <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>
+          )}
+          <div
+            className={`flex flex-wrap items-center gap-x-5 gap-y-1 ${
+              isShort ? "mt-1.5 text-sm" : "mt-3 text-base md:mt-4"
+            }`}
+          >
             <a
               href={`mailto:${contactEmail}`}
               className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
               style={{ color: ACCENT }}
             >
-              <Mail className="h-5 w-5" />
-              {contactEmail}
+              <Mail className={isShort ? "h-4 w-4" : "h-5 w-5"} />
+              {isShort ? "Email" : contactEmail}
             </a>
             {socials.map((social) => {
               const key = social.id || social.label || social.url;
@@ -747,7 +762,7 @@ export default function Portfolio({
                   className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
                   style={{ color: ACCENT }}
                 >
-                  {Icon && <Icon className="h-5 w-5" />}
+                  {Icon && <Icon className={isShort ? "h-4 w-4" : "h-5 w-5"} />}
                   {social.label}
                 </a>
               );
@@ -757,11 +772,11 @@ export default function Portfolio({
       </header>
 
       <div
-        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 pb-16 pt-3 md:px-8 md:pt-14 ${
-          embedded && !mobileUnifiedScroll ? "min-h-0 flex-1" : ""
-        }`}
+        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 md:px-8 ${
+          isShort ? "pb-8 pt-2" : "pb-16 pt-3 md:pt-14"
+        } ${embedded && !mobileUnifiedScroll ? "min-h-0 flex-1" : ""}`}
       >
-        <aside className="hidden w-32 shrink-0 md:block">
+        <aside className={`w-32 shrink-0 ${isCompact ? "hidden" : "hidden md:block"}`}>
           <div className={embedded ? "sticky top-0" : "sticky top-16"}>
             <div className="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-white">Years</div>
             <nav className="space-y-0.5 text-sm">
@@ -791,20 +806,28 @@ export default function Portfolio({
 
         <main className={`flex-1 ${embedded && !mobileUnifiedScroll ? "flex min-h-0 flex-col" : ""}`}>
           <div
-            className="sticky top-0 z-20 border-b border-neutral-900 pb-3 pt-2 md:pb-4"
+            className={`sticky top-0 z-20 border-b border-neutral-900 ${
+              isShort ? "pb-2 pt-1" : "pb-3 pt-2 md:pb-4"
+            }`}
             style={{ backgroundColor: BG }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
-              <h2 className="text-xl font-semibold tracking-tight text-white">Timeline</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4">
+              <h2 className={`font-semibold tracking-tight text-white ${isShort ? "text-base" : "text-xl"}`}>
+                Timeline
+              </h2>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
+                {!isShort && (
+                  <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
+                )}
                 <div className="flex border border-neutral-800 bg-neutral-950/80">
                   {FILTERS.map((f) => (
                     <button
                       key={f.value}
                       type="button"
                       onClick={() => handleFilterChange(f.value)}
-                      className="cursor-pointer border-r border-neutral-800 px-3 py-2 font-mono text-sm uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80"
+                      className={`cursor-pointer border-r border-neutral-800 font-mono uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80 ${
+                        isShort ? "px-2.5 py-1.5 text-[11px]" : "px-3 py-2 text-sm"
+                      }`}
                       style={{
                         backgroundColor: filter === f.value ? ACCENT : "transparent",
                         color: filter === f.value ? BG : FG,
@@ -816,6 +839,31 @@ export default function Portfolio({
                 </div>
               </div>
             </div>
+            {isCompact && grouped.years.length > 0 && (
+              <nav
+                className={`portfolio-scroll mt-2 flex gap-1.5 overflow-x-auto pb-1 ${isShort ? "" : "md:hidden"}`}
+                aria-label="Jump to year"
+              >
+                {grouped.years.map((year) => {
+                  const isActive = year === activeYear;
+                  return (
+                    <button
+                      key={year}
+                      type="button"
+                      onClick={() => handleYearClick(year)}
+                      className="shrink-0 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]"
+                      style={{
+                        borderColor: isActive ? ACCENT : "#404040",
+                        color: isActive ? ACCENT : "#ffffff",
+                        backgroundColor: isActive ? "rgba(255,0,0,0.12)" : "transparent",
+                      }}
+                    >
+                      {year}
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
             {loading && (
               <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-white">
                 Loading latest content…
@@ -845,13 +893,13 @@ export default function Portfolio({
             }`}
             style={embedded || mobileUnifiedScroll ? undefined : { maxHeight: "calc(100vh - 210px)" }}
           >
-            <div className="absolute bottom-0 left-[10px] top-0 hidden w-px bg-neutral-900 md:block" />
+            <div className={`absolute bottom-0 left-[10px] top-0 w-px bg-neutral-900 ${isCompact ? "hidden" : "hidden md:block"}`} />
 
             <div
               ref={timelineContentRef}
               style={isMonitor ? { transform: `translate3d(0, ${-monitorOffset}px, 0)` } : undefined}
             >
-              <div className="space-y-10">
+              <div className={isShort ? "space-y-6" : "space-y-10"}>
                 {grouped.years.map((year) => {
                   const nodesForYear = grouped.groupedMap.get(year) || [];
                   const yearNodes = nodesForYear.map((node) => (
@@ -867,7 +915,7 @@ export default function Portfolio({
                   return (
                     <section key={year} id={`year-${year}`} className="scroll-mt-20 md:scroll-mt-6">
                       <div className="mb-3 flex items-center gap-3">
-                        <div className="hidden items-center gap-3 md:flex">
+                        <div className={`items-center gap-3 ${isCompact ? "hidden" : "hidden md:flex"}`}>
                           <div
                             className="h-[9px] w-[9px] border"
                             style={{
@@ -877,7 +925,7 @@ export default function Portfolio({
                           />
                           <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
                         </div>
-                        <div className="md:hidden">
+                        <div className={isCompact ? "block" : "md:hidden"}>
                           <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
                         </div>
                         <div className="h-px flex-1 bg-neutral-900" />
