@@ -1,59 +1,106 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Mail, Linkedin, Github } from "lucide-react";
 import { useContent } from "../hooks/useContent.js";
 import ProjectModal from "./ProjectModal.jsx";
-import HoverDemoVideo, { collectProjectVideos } from "./HoverDemoVideo.jsx";
+import HoverDemoVideo, { resolveDemo } from "./HoverDemoVideo.jsx";
+import OutboundLink from "./OutboundLink.jsx";
 
 const ACCENT = "#FF0000";
 const BG = "#0a0a0a";
 const FG = "#ffffff";
 
 const FILTERS = [
-  { value: "work", label: "Work" },
-  { value: "projects", label: "Projects" },
   { value: "all", label: "All" },
+  { value: "projects", label: "Projects" },
+  { value: "work", label: "Work" },
 ];
 
-const CISL_RELATED_PROJECT_IDS = [
-  { id: "cisl-inference-pipeline", label: "Inference pipeline" },
-  { id: "cisl-web-viewer", label: "Web viewer" },
-];
+/** Modal payload from a project node or a career node with `detail`. */
+function detailFromNode(node) {
+  if (!node) return null;
+  if (node.type === "project" && node.project?.hasDetails) {
+    return {
+      ...node.project,
+      demo: node.project.demo || node.demo,
+      images: node.project.images || node.images || [],
+    };
+  }
+  if (node.type === "career" && node.hasDetails && node.detail) {
+    return {
+      ...node.detail,
+      demo: node.detail.demo || node.demo,
+      images: node.detail.images || node.images || [],
+    };
+  }
+  return null;
+}
+
+function demoFromNode(node) {
+  return resolveDemo(node?.project) || resolveDemo(node?.detail) || resolveDemo(node);
+}
+
+/** Ongoing roles ("Present") group under the current calendar year. */
+function resolveGroupYear(node) {
+  const label = String(node?.dateLabel ?? "");
+  if (/\bPresent\b/i.test(label)) return new Date().getFullYear();
+  return node?.year ?? 0;
+}
 
 function groupByYearPreservingOrder(nodes) {
   const groupedMap = new Map();
-  const yearsInOrder = [];
   nodes.forEach((node) => {
-    const y = node.year ?? 0;
-    if (!groupedMap.has(y)) {
-      groupedMap.set(y, []);
-      yearsInOrder.push(y);
-    }
+    const y = resolveGroupYear(node);
+    if (!groupedMap.has(y)) groupedMap.set(y, []);
     groupedMap.get(y).push(node);
   });
-  return { groupedMap, years: yearsInOrder };
+  // Newest → oldest so All (education @ 2028 + ongoing roles) never follows JSON insertion order.
+  const years = [...groupedMap.keys()].sort((a, b) => b - a);
+  return { groupedMap, years };
 }
 
-function NodeMedia({ node, videos = [] }) {
+function nodesForFilter(timeline, nextFilter) {
+  const base = Array.isArray(timeline) ? timeline : [];
+  if (nextFilter === "work") return base.filter((n) => n.type === "career");
+  if (nextFilter === "projects") return base.filter((n) => n.type === "project");
+  return base;
+}
+
+/** Year to highlight after a view switch — avoid one paint with a stale active year. */
+function activeYearForFilterSwitch(years, prevYear, scrollTop, resetToTop) {
+  if (!years.length) return null;
+  if (resetToTop || scrollTop < 8) return years[0];
+  if (prevYear != null && years.includes(prevYear)) return prevYear;
+  return years[0];
+}
+
+function NodeMedia({ node, demo, clipScroll = false, mediaEnabled = true }) {
   const images = node.images && Array.isArray(node.images) ? node.images : [];
-  if (!images.length && !videos.length) return null;
+  if (!images.length && !demo) return null;
 
   return (
-    <aside className="mt-3 md:mt-0 md:ml-4 md:w-56">
-      <div className="portfolio-scroll flex h-auto max-h-52 flex-col gap-2 overflow-y-auto md:max-h-64">
-        {videos.slice(0, 2).map((video) => (
+    <aside className="mt-3 md:mt-0 md:ml-4 md:w-56 md:shrink-0">
+      <div
+        className={`portfolio-scroll flex h-auto max-h-52 flex-col gap-2 md:max-h-64 ${
+          clipScroll ? "overflow-clip" : "overflow-y-auto"
+        }`}
+      >
+        {demo && (
           <HoverDemoVideo
-            key={video.url}
-            url={video.url}
-            title={video.title}
+            src={demo.src}
+            href={demo.href}
+            title={demo.label || node.title || "Demo"}
             compact
+            enabled={mediaEnabled}
             className="w-full shrink-0"
           />
-        ))}
+        )}
         {images.map((img) => (
-          <div key={img.src} className="shrink-0 md:w-full">
-            <div className="relative h-24 w-full overflow-hidden border border-neutral-800 bg-neutral-950">
-              <img src={img.src} alt={img.alt || ""} className="h-full w-full object-cover" />
-            </div>
+          <div key={img.src} className="shrink-0 border border-neutral-800 bg-neutral-950 md:w-full">
+            <img
+              src={img.src}
+              alt={img.alt || ""}
+              className="h-auto w-full object-contain"
+            />
           </div>
         ))}
       </div>
@@ -61,24 +108,47 @@ function NodeMedia({ node, videos = [] }) {
   );
 }
 
-function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks, relatedVideos }) {
+function featurePreviewLines(project) {
+  if (Array.isArray(project?.features) && project.features.length) {
+    return project.features.slice(0, 3).map((f) =>
+      typeof f === "string" ? f : f.title || f.description,
+    );
+  }
+  if (Array.isArray(project?.highlights)) return project.highlights.slice(0, 3);
+  return [];
+}
+
+function TimelineNode({ node, onOpenDetail, clipMedia = false, mediaEnabled = true }) {
   const baseClasses = "border border-neutral-800 px-4 py-4 text-base leading-relaxed text-white";
-  const projectVideos = collectProjectVideos(node.project);
-  const mediaVideos = relatedVideos?.length ? relatedVideos : projectVideos;
+  const demo = demoFromNode(node);
+  const detail = detailFromNode(node);
 
   if (node.type === "project") {
-    const hasDetails = node.project?.hasDetails && node.project;
-    const Wrapper = hasDetails ? "button" : "article";
-    const wrapperProps = hasDetails
-      ? {
-          type: "button",
-          className: `${baseClasses} w-full text-left cursor-pointer hover:border-[#FF0000] transition-colors`,
-          onClick: () => onProjectClick?.(node.project),
-        }
-      : { className: baseClasses };
+    const hasDetails = Boolean(detail);
+    const preview = featurePreviewLines(node.project);
+    const openDetail = hasDetails ? () => onOpenDetail?.(detail) : undefined;
 
     return (
-      <Wrapper {...wrapperProps}>
+      <article
+        className={`${baseClasses} ${
+          hasDetails
+            ? "w-full cursor-pointer transition-colors hover:border-[#FF0000] has-[a:hover]:border-neutral-800"
+            : ""
+        }`}
+        onClick={openDetail}
+        onKeyDown={
+          openDetail
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openDetail();
+                }
+              }
+            : undefined
+        }
+        role={hasDetails ? "button" : undefined}
+        tabIndex={hasDetails ? 0 : undefined}
+      >
         <div className="md:flex md:items-stretch md:justify-between md:gap-4">
           <div className="md:flex-1">
             <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -94,30 +164,25 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             </header>
             {node.summary && <p className="mb-3 whitespace-pre-line text-white">{node.summary}</p>}
-            {node.project?.highlights && (
+            {preview.length > 0 && (
               <ul className="mt-2 space-y-1 text-sm text-white">
-                {node.project.highlights.slice(0, 3).map((h, idx) => (
-                  <li key={idx} className="flex gap-2">
+                {preview.map((line) => (
+                  <li key={line} className="flex gap-2">
                     <span className="mt-[5px] h-[1px] w-4 shrink-0 bg-[#FF0000]" />
-                    <span>{h}</span>
+                    <span>{line}</span>
                   </li>
                 ))}
               </ul>
             )}
             {node.project?.links?.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {node.project.links.map((link, idx) => (
-                  <a
-                    key={idx}
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="border px-2 py-1 font-mono text-sm transition-colors hover:border-[#FF0000]"
-                    style={{ borderColor: "#404040", color: ACCENT }}
+                {node.project.links.map((link) => (
+                  <OutboundLink
+                    key={`${link.label}-${link.url}`}
+                    link={link}
+                    compact
                     onClick={(event) => event.stopPropagation()}
-                  >
-                    {link.label}
-                  </a>
+                  />
                 ))}
               </div>
             )}
@@ -131,9 +196,9 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
               </div>
             )}
           </div>
-          <NodeMedia node={node} videos={projectVideos} />
+          <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
         </div>
-      </Wrapper>
+      </article>
     );
   }
 
@@ -156,107 +221,74 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
             {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
             {node.bullets?.length > 0 && (
               <ul className="mt-2 space-y-1 text-sm text-white">
-                {node.bullets.map((line, idx) => (
-                  <li key={idx} className="flex gap-2">
+                {node.bullets.map((line) => (
+                  <li key={line} className="flex gap-2">
                     <span className="mt-[5px] h-[1px] w-3 shrink-0 bg-[#FF0000]" />
                     <span>{line}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {node.semesters && (
-              <div className="mb-3 grid gap-2 text-sm text-white md:grid-cols-2">
-                {node.semesters.map((sem) => (
-                  <div key={sem.term}>
-                    <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-white">{sem.term}</div>
-                    <ul className="mt-1 space-y-0.5">
-                      {sem.courses.map((course) => (
-                        <li key={course}>{course}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-            {node.events && (
-              <div className="space-y-2 border-t border-neutral-800 pt-3 text-sm text-white">
-                {node.events.map((event) => (
-                  <div key={event.title}>
-                    <div className="font-mono text-xs uppercase tracking-[0.16em] text-white">{event.dateLabel}</div>
-                    <div className="text-sm font-semibold text-white">{event.title}</div>
-                    <p className="text-white">{event.description}</p>
-                    {event.links && (
-                      <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                        {event.links.map((link) => (
-                          <a
-                            key={link.url}
-                            href={link.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="border border-neutral-700 px-2 py-1 font-mono text-xs hover:border-[#FF0000]"
-                            style={{ color: ACCENT }}
-                          >
-                            {link.label}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-          <NodeMedia node={node} />
+          <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
         </div>
       </article>
     );
   }
 
   if (node.type === "career") {
-    const showRelatedProjects =
-      relatedProjectLinks?.length > 0 && typeof onOpenProject === "function";
+    const hasDetails = Boolean(detail);
+    const openDetail = hasDetails ? () => onOpenDetail?.(detail) : undefined;
+
     return (
-      <article className={baseClasses}>
+      <article
+        className={`${baseClasses} ${
+          hasDetails
+            ? "w-full cursor-pointer transition-colors hover:border-[#FF0000]"
+            : ""
+        }`}
+        onClick={openDetail}
+        onKeyDown={
+          openDetail
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openDetail();
+                }
+              }
+            : undefined
+        }
+        role={hasDetails ? "button" : undefined}
+        tabIndex={hasDetails ? 0 : undefined}
+      >
         <div className="md:flex md:items-stretch md:justify-between md:gap-4">
           <div className="md:flex-1">
-            <header className="mb-2">
-              <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
-                {node.dateLabel} · CAREER
+            <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
+                  {node.dateLabel} · CAREER
+                </div>
+                <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
+                <p className="text-sm text-white">
+                  {node.organization}
+                  {node.location ? ` · ${node.location}` : null}
+                </p>
               </div>
-              <h3 className="mt-1 text-lg font-semibold text-white">{node.title}</h3>
-              <p className="text-sm text-white">
-                {node.organization}
-                {node.location ? ` · ${node.location}` : null}
-              </p>
+              {hasDetails && <span className="font-mono text-xs text-[#FF0000]">Details →</span>}
             </header>
             {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
             {node.bullets && (
               <ul className="mt-2 space-y-1 text-sm text-white">
-                {node.bullets.map((line, idx) => (
-                  <li key={idx} className="flex gap-2">
-                    <span className="mt-[5px] h-[1px] w-3 bg-[#FF0000]" />
+                {node.bullets.map((line) => (
+                  <li key={line} className="flex gap-2">
+                    <span className="mt-[5px] h-[1px] w-3 shrink-0 bg-[#FF0000]" />
                     <span>{line}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {showRelatedProjects && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {relatedProjectLinks.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onOpenProject(id)}
-                    className="border px-2 py-1 font-mono text-sm transition-colors hover:border-[#FF0000]"
-                    style={{ borderColor: "#404040", color: ACCENT }}
-                  >
-                    {label} →
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-          <NodeMedia node={node} videos={mediaVideos} />
+          <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
         </div>
       </article>
     );
@@ -277,13 +309,13 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
             {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
             {node.notes && (
               <ul className="mt-2 space-y-1 text-sm text-white">
-                {node.notes.map((line, idx) => (
-                  <li key={idx}>{line}</li>
+                {node.notes.map((line) => (
+                  <li key={line}>{line}</li>
                 ))}
               </ul>
             )}
           </div>
-          <NodeMedia node={node} />
+          <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
         </div>
       </article>
     );
@@ -303,13 +335,13 @@ function TimelineNode({ node, onProjectClick, onOpenProject, relatedProjectLinks
           {node.summary && <p className="mb-3 whitespace-pre-line text-base text-white">{node.summary}</p>}
           {node.details && (
             <ul className="mt-2 space-y-1 text-sm text-white">
-              {node.details.map((line, idx) => (
-                <li key={idx}>{line}</li>
+              {node.details.map((line) => (
+                <li key={line}>{line}</li>
               ))}
             </ul>
           )}
         </div>
-        <NodeMedia node={node} />
+        <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
       </div>
     </article>
   );
@@ -325,73 +357,109 @@ export default function Portfolio({
   onBottomOverscroll,
   className = "",
   style,
+  /** When false, skip attaching demo video sources (hidden 3D monitor clone). */
+  loadMedia = true,
 }) {
   const embedded = mode === "monitor" || mode === "fullscreen";
+  const isMonitor = mode === "monitor";
   const { timeline, site, loading, error } = useContent();
   const [activeYear, setActiveYear] = useState(null);
-  const [filter, setFilter] = useState("work");
+  const [filter, setFilter] = useState("all");
   const [modalProject, setModalProject] = useState(null);
-  const [returnToWorkOnModalClose, setReturnToWorkOnModalClose] = useState(false);
   const [endSpacerPx, setEndSpacerPx] = useState(280);
+  const [monitorOffset, setMonitorOffset] = useState(0);
   const timelineContainerRef = useRef(null);
+  const timelineContentRef = useRef(null);
+  const monitorOffsetRef = useRef(0);
+  const monitorAnimRef = useRef(0);
   const pinnedYearRef = useRef(null);
   const pinReleaseTimerRef = useRef(null);
   const overscrollHintAtRef = useRef(0);
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current = Boolean(modalProject);
 
   const hero = site?.hero || {};
   const contactEmail = site?.contact?.email || "Akshatshahi2006@gmail.com";
   const socials = Array.isArray(site?.socials)
     ? site.socials
     : [
-        { id: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/in/akshat-shahi-651684217/" },
+        { id: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/in/akshat-kumar-shahi/" },
         { id: "github", label: "GitHub", url: "https://github.com/Chikki06" },
       ];
 
-  const projectsById = useMemo(() => {
-    const map = new Map();
-    for (const node of Array.isArray(timeline) ? timeline : []) {
-      if (node.type === "project" && node.project?.id) map.set(node.project.id, node.project);
-    }
-    return map;
-  }, [timeline]);
-
-  const filteredData = useMemo(() => {
-    const base = Array.isArray(timeline) ? timeline : [];
-    if (filter === "work") return base.filter((n) => n.type === "career");
-    if (filter === "projects") return base.filter((n) => n.type === "project");
-    return base;
-  }, [filter, timeline]);
+  const filteredData = useMemo(() => nodesForFilter(timeline, filter), [filter, timeline]);
 
   const grouped = useMemo(() => groupByYearPreservingOrder(filteredData), [filteredData]);
 
-  useEffect(() => {
-    if (!grouped.years.length) return;
-    setActiveYear(grouped.years[0]);
-  }, [grouped.years]);
+  useEffect(() => () => {
+    clearTimeout(pinReleaseTimerRef.current);
+    cancelAnimationFrame(monitorAnimRef.current);
+  }, []);
 
-  useEffect(() => () => clearTimeout(pinReleaseTimerRef.current), []);
+  // Reset transform scroll when the monitor list contents change (filter handler also resets eagerly).
+  useEffect(() => {
+    if (!isMonitor) return;
+    monitorOffsetRef.current = 0;
+    setMonitorOffset(0);
+  }, [filter, grouped.years, isMonitor]);
 
   // Enough trailing space that the last year can become majority-visible.
   useEffect(() => {
     const container = timelineContainerRef.current;
     if (!container) return undefined;
-    const update = () => setEndSpacerPx(Math.max(Math.round(container.clientHeight * 0.45), 160));
+    const update = () => {
+      setEndSpacerPx(Math.max(Math.round(container.clientHeight * 0.45), 160));
+      if (!isMonitor) return;
+      const content = timelineContentRef.current;
+      if (!content) return;
+      const maxScroll = Math.max(content.offsetHeight - container.clientHeight, 0);
+      if (monitorOffsetRef.current > maxScroll) {
+        monitorOffsetRef.current = maxScroll;
+        setMonitorOffset(maxScroll);
+      }
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(container);
+    const content = timelineContentRef.current;
+    if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [embedded, grouped.years, filter]);
+  }, [embedded, grouped.years, filter, isMonitor]);
+
+  const getScrollMetrics = useCallback(() => {
+    const container = timelineContainerRef.current;
+    if (!container) return null;
+    if (isMonitor) {
+      const content = timelineContentRef.current;
+      if (!content) return null;
+      return {
+        container,
+        scrollTop: monitorOffsetRef.current,
+        clientHeight: container.clientHeight,
+        scrollHeight: content.offsetHeight,
+      };
+    }
+    return {
+      container,
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+      scrollHeight: container.scrollHeight,
+    };
+  }, [isMonitor]);
 
   const resolveActiveYearFromScroll = useCallback(() => {
-    const container = timelineContainerRef.current;
-    if (!container || !grouped.years.length) return null;
+    const metrics = getScrollMetrics();
+    if (!metrics || !grouped.years.length) return null;
 
-    const { scrollTop, clientHeight, scrollHeight } = container;
+    const { container, scrollTop, clientHeight, scrollHeight } = metrics;
     const containerRect = container.getBoundingClientRect();
     const viewTop = scrollTop;
     const viewBottom = scrollTop + clientHeight;
 
-    // At the hard bottom, the last year always wins — thin cards included.
+    // At the hard top/bottom, prefer edge years — thin cards (e.g. 2028 education) otherwise lose to taller neighbors.
+    if (scrollTop <= 3) {
+      return grouped.years[0];
+    }
     if (scrollTop + clientHeight >= scrollHeight - 3) {
       return grouped.years[grouped.years.length - 1];
     }
@@ -411,30 +479,63 @@ export default function Portfolio({
       }
     }
     return bestYear;
-  }, [grouped.years]);
+  }, [getScrollMetrics, grouped.years]);
 
-  // Majority-visible year spy; clicks pin the destination until the smooth scroll settles.
+  const syncActiveYearFromScroll = useCallback(() => {
+    if (pinnedYearRef.current != null) {
+      setActiveYear(pinnedYearRef.current);
+      return;
+    }
+    const nextYear = resolveActiveYearFromScroll();
+    if (nextYear != null) setActiveYear((prev) => (prev === nextYear ? prev : nextYear));
+  }, [resolveActiveYearFromScroll]);
+
+  const setMonitorScrollOffset = useCallback((next) => {
+    monitorOffsetRef.current = next;
+    setMonitorOffset(next);
+    syncActiveYearFromScroll();
+  }, [syncActiveYearFromScroll]);
+
+  const handleFilterChange = (nextFilter) => {
+    if (nextFilter === filter) return;
+    pinnedYearRef.current = null;
+    clearTimeout(pinReleaseTimerRef.current);
+
+    const { years } = groupByYearPreservingOrder(nodesForFilter(timeline, nextFilter));
+    const scrollTop = isMonitor
+      ? 0
+      : timelineContainerRef.current?.scrollTop ?? 0;
+
+    if (isMonitor) {
+      cancelAnimationFrame(monitorAnimRef.current);
+      monitorOffsetRef.current = 0;
+      setMonitorOffset(0);
+    } else if (timelineContainerRef.current && scrollTop < 8) {
+      timelineContainerRef.current.scrollTop = 0;
+    }
+
+    setFilter(nextFilter);
+    setActiveYear((prev) => activeYearForFilterSwitch(years, prev, scrollTop, isMonitor));
+  };
+
+  // Majority-visible year spy; layout sync avoids a paint with a stale highlight after list changes.
+  useLayoutEffect(() => {
+    syncActiveYearFromScroll();
+  }, [grouped.years, syncActiveYearFromScroll]);
+
   useEffect(() => {
+    if (isMonitor) return undefined;
     const container = timelineContainerRef.current;
     if (!container) return undefined;
 
-    const handleScroll = () => {
-      if (pinnedYearRef.current != null) {
-        setActiveYear(pinnedYearRef.current);
-        return;
-      }
-      const nextYear = resolveActiveYearFromScroll();
-      if (nextYear != null) setActiveYear((prev) => (prev === nextYear ? prev : nextYear));
-    };
-
-    handleScroll();
+    const handleScroll = () => syncActiveYearFromScroll();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [grouped.years, resolveActiveYearFromScroll]);
+  }, [grouped.years, isMonitor, syncActiveYearFromScroll]);
 
   // Fullscreen: keep scrolling at the bottom nudges the exit control.
   useEffect(() => {
-    if (mode !== "fullscreen" || !onBottomOverscroll) return undefined;
+    if (mode !== "fullscreen" || !onBottomOverscroll || modalProject) return undefined;
     const container = timelineContainerRef.current;
     if (!container) return undefined;
 
@@ -450,7 +551,7 @@ export default function Portfolio({
 
     container.addEventListener("wheel", onWheel, { passive: true });
     return () => container.removeEventListener("wheel", onWheel);
-  }, [mode, onBottomOverscroll]);
+  }, [mode, modalProject, onBottomOverscroll]);
 
   useEffect(() => {
     if (embedded) return undefined;
@@ -471,15 +572,27 @@ export default function Portfolio({
   }, [embedded]);
 
   const consumeWheel = useCallback((deltaY, deltaMode = 0) => {
-    const element = timelineContainerRef.current;
-    if (!element) return false;
-    const delta = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? element.clientHeight : 1);
-    const atTop = element.scrollTop <= 0;
-    const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+    // Absorb wheel while a detail modal is open so the timeline stays put.
+    if (modalOpenRef.current) return true;
+    const metrics = getScrollMetrics();
+    if (!metrics) return false;
+    const { scrollTop, clientHeight, scrollHeight } = metrics;
+    const delta = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? clientHeight : 1);
+    const BOUNDARY = 2;
+    const maxScroll = Math.max(scrollHeight - clientHeight, 0);
+    const atTop = scrollTop <= BOUNDARY;
+    const atBottom = scrollTop >= maxScroll - BOUNDARY;
     if ((delta < 0 && atTop) || (delta > 0 && atBottom) || delta === 0) return false;
-    element.scrollTop += delta;
+
+    if (isMonitor) {
+      const next = Math.min(Math.max(scrollTop + delta, 0), maxScroll);
+      setMonitorScrollOffset(next);
+      return true;
+    }
+
+    metrics.container.scrollTop += delta;
     return true;
-  }, []);
+  }, [getScrollMetrics, isMonitor, setMonitorScrollOffset]);
 
   useEffect(() => {
     if (!onScrollControllerChange) return undefined;
@@ -487,32 +600,43 @@ export default function Portfolio({
     return () => onScrollControllerChange(null);
   }, [consumeWheel, onScrollControllerChange]);
 
-  const openProjectById = useCallback((projectId) => {
-    const timelineNode = Array.isArray(timeline)
-      ? timeline.find((n) => n.type === "project" && n.project?.id === projectId)
-      : null;
-    if (timelineNode?.project) {
-      setReturnToWorkOnModalClose(true);
-      setFilter("projects");
-      setModalProject(timelineNode.project);
-    }
-  }, [timeline]);
-
   const handleCloseProjectModal = useCallback(() => {
-    if (returnToWorkOnModalClose) {
-      setFilter("work");
-      setReturnToWorkOnModalClose(false);
-    }
     setModalProject(null);
-  }, [returnToWorkOnModalClose]);
+  }, []);
+
+  const animateMonitorOffset = useCallback((targetY, onDone) => {
+    cancelAnimationFrame(monitorAnimRef.current);
+    const start = monitorOffsetRef.current;
+    const delta = targetY - start;
+    if (Math.abs(delta) < 1) {
+      setMonitorScrollOffset(targetY);
+      onDone?.();
+      return;
+    }
+    const startTime = performance.now();
+    const duration = 420;
+    const tick = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      setMonitorScrollOffset(start + delta * eased);
+      if (t < 1) {
+        monitorAnimRef.current = requestAnimationFrame(tick);
+      } else {
+        onDone?.();
+      }
+    };
+    monitorAnimRef.current = requestAnimationFrame(tick);
+  }, [setMonitorScrollOffset]);
 
   const handleYearClick = (year) => {
     pinnedYearRef.current = year;
     setActiveYear(year);
     clearTimeout(pinReleaseTimerRef.current);
+    cancelAnimationFrame(monitorAnimRef.current);
 
-    const container = timelineContainerRef.current;
-    if (!container) return;
+    const metrics = getScrollMetrics();
+    if (!metrics) return;
+    const { container, scrollTop, clientHeight, scrollHeight } = metrics;
     const containerRect = container.getBoundingClientRect();
     if (!embedded) {
       const winScrollTop = window.scrollY || window.pageYOffset;
@@ -524,17 +648,27 @@ export default function Portfolio({
     const el = document.getElementById(`year-${year}`);
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const scrollTop = container.scrollTop;
     const sectionTop = rect.top - containerRect.top + scrollTop;
-    const maxScroll = Math.max(container.scrollHeight - container.clientHeight, 0);
+    const maxScroll = Math.max(scrollHeight - clientHeight, 0);
     const targetY = Math.min(Math.max(sectionTop - 24, 0), maxScroll);
-    container.scrollTo({ top: targetY, behavior: "smooth" });
 
     const releasePin = () => {
       pinnedYearRef.current = null;
       const nextYear = resolveActiveYearFromScroll();
       if (nextYear != null) setActiveYear(nextYear);
     };
+
+    if (isMonitor) {
+      animateMonitorOffset(targetY, () => {
+        clearTimeout(pinReleaseTimerRef.current);
+        releasePin();
+      });
+      // Fallback if animation is interrupted.
+      pinReleaseTimerRef.current = setTimeout(releasePin, 900);
+      return;
+    }
+
+    container.scrollTo({ top: targetY, behavior: "smooth" });
 
     const onScrollEnd = () => {
       container.removeEventListener("scrollend", onScrollEnd);
@@ -615,7 +749,7 @@ export default function Portfolio({
                     key={year}
                     type="button"
                     onClick={() => handleYearClick(year)}
-                    className={`flex w-full cursor-pointer items-center gap-2 border-l-2 px-2 py-1.5 text-left font-mono transition-colors ${
+                    className={`flex w-full cursor-pointer items-center gap-2 border-l-2 px-2 py-1.5 text-left font-mono ${
                       isActive ? "" : "hover:border-white hover:text-white"
                     }`}
                     style={{
@@ -643,7 +777,7 @@ export default function Portfolio({
                     <button
                       key={f.value}
                       type="button"
-                      onClick={() => setFilter(f.value)}
+                      onClick={() => handleFilterChange(f.value)}
                       className="cursor-pointer border-r border-neutral-800 px-3 py-2 font-mono text-sm uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80"
                       style={{
                         backgroundColor: filter === f.value ? ACCENT : "transparent",
@@ -670,59 +804,63 @@ export default function Portfolio({
 
           <div
             ref={timelineContainerRef}
-            className={`portfolio-scroll relative mt-6 overflow-y-auto ${embedded ? "mt-3 min-h-0 flex-1" : ""}`}
+            className={`portfolio-scroll relative ${
+              modalProject
+                ? embedded
+                  ? "mt-3 min-h-0 flex-1 overflow-hidden"
+                  : "mt-6 overflow-hidden"
+                : mode === "monitor"
+                  ? "mt-3 min-h-0 flex-1 overflow-clip"
+                  : embedded
+                    ? "mt-3 min-h-0 flex-1 overflow-y-auto"
+                    : "mt-6 overflow-y-auto"
+            }`}
             style={embedded ? undefined : { maxHeight: "calc(100vh - 210px)" }}
           >
             <div className="absolute bottom-0 left-[10px] top-0 hidden w-px bg-neutral-900 md:block" />
 
-            <div className="space-y-10">
-              {grouped.years.map((year) => {
-                const nodesForYear = grouped.groupedMap.get(year) || [];
-                const yearNodes = nodesForYear.map((node) => {
-                  const isCislCareer =
-                    node.type === "career" &&
-                    (node.organization?.includes("CISL") ||
-                      node.organization?.includes("Chemical Imaging") ||
-                      node.id === "2024-cisl-career");
-                  const relatedVideos = isCislCareer
-                    ? CISL_RELATED_PROJECT_IDS.flatMap(({ id }) => collectProjectVideos(projectsById.get(id)))
-                    : undefined;
-                  return (
+            <div
+              ref={timelineContentRef}
+              style={isMonitor ? { transform: `translate3d(0, ${-monitorOffset}px, 0)` } : undefined}
+            >
+              <div className="space-y-10">
+                {grouped.years.map((year) => {
+                  const nodesForYear = grouped.groupedMap.get(year) || [];
+                  const yearNodes = nodesForYear.map((node) => (
                     <TimelineNode
                       key={node.id}
                       node={node}
-                      onProjectClick={setModalProject}
-                      onOpenProject={openProjectById}
-                      relatedProjectLinks={isCislCareer ? CISL_RELATED_PROJECT_IDS : undefined}
-                      relatedVideos={relatedVideos}
+                      onOpenDetail={setModalProject}
+                      clipMedia={isMonitor}
+                      mediaEnabled={loadMedia}
                     />
-                  );
-                });
+                  ));
 
-                return (
-                  <section key={year} id={`year-${year}`} className="scroll-mt-6">
-                    <div className="mb-3 flex items-center gap-3">
-                      <div className="hidden items-center gap-3 md:flex">
-                        <div
-                          className="h-[9px] w-[9px] border"
-                          style={{
-                            borderColor: year === activeYear ? ACCENT : "#525252",
-                            backgroundColor: year === activeYear ? ACCENT : "transparent",
-                          }}
-                        />
-                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
+                  return (
+                    <section key={year} id={`year-${year}`} className="scroll-mt-6">
+                      <div className="mb-3 flex items-center gap-3">
+                        <div className="hidden items-center gap-3 md:flex">
+                          <div
+                            className="h-[9px] w-[9px] border"
+                            style={{
+                              borderColor: year === activeYear ? ACCENT : "#525252",
+                              backgroundColor: year === activeYear ? ACCENT : "transparent",
+                            }}
+                          />
+                          <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
+                        </div>
+                        <div className="md:hidden">
+                          <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
+                        </div>
+                        <div className="h-px flex-1 bg-neutral-900" />
                       </div>
-                      <div className="md:hidden">
-                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
-                      </div>
-                      <div className="h-px flex-1 bg-neutral-900" />
-                    </div>
-                    <div className="space-y-3">{yearNodes}</div>
-                  </section>
-                );
-              })}
+                      <div className="space-y-3">{yearNodes}</div>
+                    </section>
+                  );
+                })}
+              </div>
+              <div aria-hidden="true" style={{ height: endSpacerPx }} />
             </div>
-            <div aria-hidden="true" style={{ height: endSpacerPx }} />
           </div>
         </main>
       </div>

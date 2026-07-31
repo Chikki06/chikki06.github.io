@@ -151,7 +151,7 @@ export default function AdminApp() {
           <nav className="space-y-1 text-sm">
             {[
               { id: "timeline", label: "Timeline & Projects" },
-              { id: "site", label: "Hero, Contact, Skills" },
+              { id: "site", label: "Hero & Contact" },
             ].map((tab) => {
               const active = tab.id === activeTab;
               return (

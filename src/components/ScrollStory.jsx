@@ -1,15 +1,21 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Html, useTexture } from "@react-three/drei";
-import { DoubleSide, SRGBColorSpace } from "three";
+import { ClampToEdgeWrapping, DoubleSide, SRGBColorSpace } from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { ExternalLink, Github, Linkedin, Mail, Maximize2, Minimize2 } from "lucide-react";
+import { ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import { useContent } from "../hooks/useContent.js";
 import Portfolio from "./Portfolio.jsx";
 import ProjectModal from "./ProjectModal.jsx";
+import BakedHtmlFace from "./BakedHtmlFace.jsx";
+import BusinessCardFront from "./storyFaces/BusinessCardFront.jsx";
+import BusinessCardBack from "./storyFaces/BusinessCardBack.jsx";
+import LetterFace from "./storyFaces/LetterFace.jsx";
 import { createStoryData, projectSummary, projectTitle } from "./storyData.js";
-import { Model as MonitorModel } from "../../monitor.jsx";
+import { Model as MonitorModel } from "../models/Monitor.jsx";
+import { Model as PolaroidModel } from "../models/Polaroid.jsx";
+import { Model as PolaroidCameraModel } from "../models/Camera.jsx";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -17,9 +23,75 @@ const PAPER = "/assets/card.webp";
 const ENVELOPE = "/assets/envelope.webp";
 const TABLE = "/assets/table.webp";
 const WALL = "/assets/wall.webp";
-const DEMO_VIDEOS = ["/assets/demo1.mp4", "/assets/demo2.mp4", "/assets/demo3.mp4"];
+const DEMO_BY_PROJECT_ID = {
+  aerocast: { src: "/assets/aerocast.webm", href: "https://github.com/Chikki06/aerocast" },
+  synapse: { src: "/assets/synapse.webm", href: "https://devpost.com/software/synapse-dx7hcr" },
+  "cisl-platform": { src: "/assets/remotegpu.webm", href: "https://youtu.be/V6QrnFpiEwM" },
+};
+
+function resolveNodeDemo(node) {
+  const fromProject = node?.project?.demo;
+  if (fromProject?.src) return fromProject;
+  const fromDetail = node?.detail?.demo;
+  if (fromDetail?.src) return fromDetail;
+  if (node?.demo?.src) return node.demo;
+  const id = node?.project?.id;
+  return id && DEMO_BY_PROJECT_ID[id] ? DEMO_BY_PROJECT_ID[id] : null;
+}
+
+function demoSourceForNode(node, index = 0) {
+  const demo = resolveNodeDemo(node);
+  if (demo?.src) return demo;
+  const fallbacks = Object.values(DEMO_BY_PROJECT_ID);
+  return fallbacks[index % fallbacks.length] || null;
+}
 const MONITOR_SCALE = 3.5;
-// Calibrated from the generated `monitor.jsx` display mesh at a 0.003 scale.
+// Polaroid model is normalized flat on +Y with footprint ~32.5 × 1.44 × 32.4.
+const POLAROID_NATIVE = { width: 32.541, height: 1.438, depth: 32.364 };
+const DEG = Math.PI / 180;
+const POLAROID_TUNING = {
+  stackScale: 0.093,
+  stackX: -6.82,
+  stackY: -0.87,
+  stackZ: 0.25,
+  stackRotX: 0,
+  stackRotY: 49,
+  stackRotZ: 0,
+  fanAB: 1.5,
+  fanBC: 8,
+  camScale: 0.49,
+  camX: 4,
+  camY: 0.65,
+  camZ: -1.31,
+  camRotX: 0,
+  camRotY: -44,
+  camRotZ: 0,
+  // Final resting pose after the eject (outside the camera).
+  floatX: -5.17,
+  floatY: 1.12,
+  floatZ: -1.88,
+  floatRotX: -3,
+  floatRotY: -41,
+  floatRotZ: 180,
+};
+// Authored out→in; reversed here so scroll plays the photo eject (inside → out).
+const POLAROID_EJECT_KEYFRAMES = [
+  [-5.33, 1.12, -4.09],
+  [-5.33, 1.12, -3.83],
+  [-5.33, 1.12, -3.59],
+  [-5.28, 1.12, -3.41],
+  [-5.28, 1.12, -3.08],
+  [-5.25, 1.12, -2.94],
+  [-5.24, 1.12, -2.77],
+  [-5.22, 1.12, -2.56],
+  [-5.21, 1.12, -2.46],
+  [-5.19, 1.12, -2.29],
+  [-5.18, 1.12, -2.04],
+  [-5.17, 1.12, -1.88],
+];
+const POLAROID_EJECT_START = POLAROID_EJECT_KEYFRAMES[0];
+
+// Calibrated from the generated `Monitor.jsx` display mesh at a 0.003 scale.
 // The display is 5.325 × 3.066 scene units; these dimensions leave the model's
 // own bezel visible instead of replacing the monitor with a larger DOM rectangle.
 const MONITOR_POSITION = [0, 2.7, -4.9];
@@ -34,9 +106,234 @@ const MONITOR_SCREEN = { width: 5.325, height: 3.066, y: 0.09, z: 0.057, distanc
 const DEFAULT_MONITOR_TUNING = { modelScale: MONITOR_SCALE, screenScale: 1.081, frameFill: 0.89, cameraZLift: 0 };
 const LETTER_POSITION = [1.05, 0.02, -1.85];
 const LETTER_SIZE = { width: 6.1, height: 3.8 };
+const LETTER_FACE = { width: 510, height: 320 };
 const CARD_SIZE = { width: 4.75, height: 2.7 };
 const CARD_POSITION = [0, 0.02, 3];
-const STORY_CHAPTER_PROGRESS = [0, 0.40, 0.71, 0.93];
+const CARD_FACE = { width: 530, height: 300 };
+// Chapter buttons map to timeline lock labels — progress is resolved live so
+// polaroid / eject duration changes cannot leave the sidebar short of the beat.
+const STORY_CHAPTERS = [
+  { label: "Intro", id: "story-card", timelineLabel: "card-overhead", markerProgress: 0 },
+  { label: "Experience", id: "story-experience", timelineLabel: "timeline-read", markerProgress: 0.29 },
+  { label: "Headshot", id: "story-headshot", timelineLabel: "polaroid", markerProgress: 0.5 },
+  { label: "Projects", id: "story-projects", timelineLabel: "monitor", markerProgress: 0.76 },
+  { label: "Contact", id: "story-letter", timelineLabel: "letter", markerProgress: 0.94 },
+];
+// Fixed camera holds: park the rail on the chapter dot until `until` (journey starts).
+// `until: null` means hold through the end of the timeline.
+const STORY_LOCK_HOLDS = [
+  { lock: "card-overhead", until: "card-depart" },
+  { lock: "timeline-read", until: "polaroid-approach" },
+  { lock: "polaroid", until: "monitor-approach" },
+  { lock: "monitor", until: "letter-approach" },
+  { lock: "letter", until: null },
+];
+// Keep a chapter bubble highlighted while remapped progress is within this
+// distance of its rail slot (slots are 0.25 apart). Softens short lock holds.
+const LOCK_HIGHLIGHT_SLACK = 0.08;
+const INTRO_ZOOM_DURATION = 1.55;
+const INTRO_CROSSFADE_DURATION = 0.75;
+// Frame-fill for the polaroid overhead shot.
+const POLAROID_FRAME_FILL = 0.62;
+// How far the camera pulls back during the flip relative to the settled card distance.
+const CARD_FLIP_PULL_FACTOR = 1.75;
+// Story wheel soft-cap (never hard-stop). Monitor leave: Space or click after an edge prompt.
+const STORY_WHEEL_MAX_DELTA = 160;
+const STORY_WHEEL_MAX_SPEED = 2.6; // px/ms
+
+// Clear any older durable preference so hard refresh always shows the desktop prompt.
+if (typeof window !== "undefined") {
+  try {
+    window.localStorage.removeItem("portfolio-experience-pref");
+  } catch {
+    // Ignore private-mode failures.
+  }
+}
+
+function getStoryScrollTrigger() {
+  return ScrollTrigger.getById("portfolio-story");
+}
+
+/** Scroll within the story trigger range (not document scrollHeight). */
+function scrollToStoryProgress(progress, behavior = "auto") {
+  const clamped = Math.min(1, Math.max(0, progress));
+  const trigger = getStoryScrollTrigger();
+  if (trigger) {
+    const top = trigger.start + (trigger.end - trigger.start) * clamped;
+    window.scrollTo({ top, behavior });
+    // scrub: 0.65 otherwise eases toward the target and feels like it stops short.
+    if (behavior === "auto") {
+      ScrollTrigger.update();
+      trigger.getTween()?.progress(1);
+    }
+    return;
+  }
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  window.scrollTo({ top: Math.max(0, maxScroll * clamped), behavior });
+}
+
+function scrollToStoryLabel(timelineLabel, behavior = "auto") {
+  const animation = getStoryScrollTrigger()?.animation;
+  const time = animation?.labels?.[timelineLabel];
+  const duration = animation?.duration() || 0;
+  if (typeof time !== "number" || duration <= 0) {
+    scrollToStoryProgress(0, behavior);
+    return;
+  }
+  let progress = time / duration;
+  // Exact label progress can round one scroll-pixel shy of the monitor hold, so the
+  // expand control never mounts until a later wheel nudge. Land just inside the beat.
+  if (timelineLabel === "monitor") {
+    const letterT = animation.labels["letter-approach"];
+    if (typeof letterT === "number") {
+      const letterP = letterT / duration;
+      progress = Math.min(letterP - 0.0005, progress + 0.001);
+    }
+  }
+  scrollToStoryProgress(progress, behavior);
+}
+
+function storyProgressForLabel(timelineLabel) {
+  const animation = getStoryScrollTrigger()?.animation;
+  const time = animation?.labels?.[timelineLabel];
+  const duration = animation?.duration() || 0;
+  if (typeof time !== "number" || duration <= 0) return null;
+  return time / duration;
+}
+
+/** Live lock anchors from the scrub timeline (progress 0–1). */
+function getStoryLockAnchors() {
+  const animation = getStoryScrollTrigger()?.animation;
+  const duration = animation?.duration() || 0;
+  const labels = animation?.labels;
+  if (!labels || duration <= 0) return null;
+  const anchors = [];
+  for (const { lock, until } of STORY_LOCK_HOLDS) {
+    const lockT = labels[lock];
+    if (typeof lockT !== "number") return null;
+    const untilT = until ? labels[until] : duration;
+    if (typeof untilT !== "number") return null;
+    anchors.push({ lockProgress: lockT / duration, untilProgress: untilT / duration });
+  }
+  return anchors;
+}
+
+/**
+ * Remap scrub progress onto evenly spaced chapter dots.
+ * Parks on a dot during each lock hold; lerps between dots on journeys.
+ */
+function storyProgressToNavProgress(storyProgress) {
+  const anchors = getStoryLockAnchors();
+  const n = STORY_CHAPTERS.length;
+  if (!anchors || n < 2) return storyProgress;
+  const slot = (i) => i / (n - 1);
+  const p = Math.min(1, Math.max(0, storyProgress));
+  if (p <= anchors[0].lockProgress) return 0;
+  for (let i = 0; i < anchors.length; i += 1) {
+    const a = anchors[i];
+    const next = anchors[i + 1];
+    if (p >= a.lockProgress && p < a.untilProgress) return slot(i);
+    if (next && p >= a.untilProgress && p < next.lockProgress) {
+      const span = Math.max(1e-6, next.lockProgress - a.untilProgress);
+      return slot(i) + ((p - a.untilProgress) / span) * (slot(i + 1) - slot(i));
+    }
+  }
+  return 1;
+}
+
+/** Inverse of storyProgressToNavProgress — rail pointer position → scrub progress. */
+function navProgressToStoryProgress(navProgress) {
+  const anchors = getStoryLockAnchors();
+  const n = STORY_CHAPTERS.length;
+  if (!anchors || n < 2) return navProgress;
+  const slot = (i) => i / (n - 1);
+  const p = Math.min(1, Math.max(0, navProgress));
+  for (let i = 0; i < n; i += 1) {
+    if (Math.abs(p - slot(i)) < 0.0005) return anchors[i].lockProgress;
+  }
+  for (let i = 0; i < n - 1; i += 1) {
+    const s0 = slot(i);
+    const s1 = slot(i + 1);
+    if (p > s0 && p < s1) {
+      const t = (p - s0) / (s1 - s0);
+      const a = anchors[i];
+      const next = anchors[i + 1];
+      return a.untilProgress + t * (next.lockProgress - a.untilProgress);
+    }
+  }
+  return anchors[n - 1].lockProgress;
+}
+
+function getPolaroidFraming(fov, aspect) {
+  const tuning = POLAROID_TUNING;
+  const halfVerticalFov = Math.tan((fov * Math.PI) / 360);
+  const footprintW = POLAROID_NATIVE.width * tuning.stackScale;
+  const footprintD = POLAROID_NATIVE.depth * tuning.stackScale;
+  const distance = Math.max(
+    footprintW / (2 * halfVerticalFov * aspect * POLAROID_FRAME_FILL),
+    footprintD / (2 * halfVerticalFov * POLAROID_FRAME_FILL),
+  );
+  return {
+    camera: { x: tuning.stackX, y: tuning.stackY + distance, z: tuning.stackZ },
+    target: { x: tuning.stackX, y: tuning.stackY, z: tuning.stackZ },
+    distance,
+  };
+}
+
+/** Overhead card distance from FOV + aspect so short landscape viewports get a closer read. */
+function cardFrameFill(aspect, viewHeightPx) {
+  // Phone landscape is short in CSS pixels; keep type large. Desktop stays closer to the old ~0.55–0.6 fill.
+  if (typeof viewHeightPx === "number" && viewHeightPx > 0) {
+    if (viewHeightPx < 480) return 0.9;
+    if (viewHeightPx < 640) return 0.8;
+    return 0.62;
+  }
+  if (aspect > 1.3) return 0.86;
+  if (aspect < 0.8) return 0.72;
+  return 0.62;
+}
+
+function getCardFraming(fov, aspect, viewHeightPx) {
+  const halfVerticalFov = Math.tan((fov * Math.PI) / 360);
+  const fill = cardFrameFill(aspect, viewHeightPx);
+  const distance = Math.max(
+    CARD_SIZE.width / (2 * halfVerticalFov * aspect * fill),
+    CARD_SIZE.height / (2 * halfVerticalFov * fill),
+  );
+  return {
+    camera: { x: CARD_POSITION[0], y: CARD_POSITION[1] + distance, z: CARD_POSITION[2] },
+    target: { x: CARD_POSITION[0], y: CARD_POSITION[1], z: CARD_POSITION[2] },
+    distance,
+  };
+}
+
+/** Shared poses for scroll scrubbing and the fullscreen → card intro zoom-out. */
+function getStoryCameraPoses(fov, aspect, monitorTuning, viewHeightPx) {
+  const narrow = aspect < 0.8;
+  const halfVerticalFov = Math.tan((fov * Math.PI) / 360);
+  const monitorDistance = Math.max(
+    (MONITOR_SCREEN.width * monitorTuning.modelScale) / (2 * halfVerticalFov * aspect * monitorTuning.frameFill),
+    (MONITOR_SCREEN.height * monitorTuning.modelScale) / (2 * halfVerticalFov * monitorTuning.frameFill),
+  );
+  const monitorY = monitorPosition(monitorTuning.modelScale)[1];
+  const card = getCardFraming(fov, aspect, viewHeightPx);
+  return {
+    narrow,
+    cardCamera: card.camera,
+    cardTarget: card.target,
+    cardDistance: card.distance,
+    monitorCamera: {
+      x: 0,
+      y: monitorY + MONITOR_SCREEN.y * monitorTuning.modelScale,
+      z: MONITOR_POSITION[2] + monitorDistance * 0.98 + monitorTuning.cameraZLift,
+    },
+    monitorTarget: {
+      x: 0,
+      y: monitorY + MONITOR_SCREEN.y * monitorTuning.modelScale,
+      z: MONITOR_POSITION[2],
+    },
+  };
+}
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
@@ -67,7 +364,12 @@ function hasWebGL() {
 function PaperMaterial({ roughness = 0.84 }) {
   const texture = useTexture(PAPER);
   useEffect(() => {
+    // repeat < 1 crops/zooms the map so paper grain reads larger on the card.
     texture.colorSpace = SRGBColorSpace;
+    texture.wrapS = ClampToEdgeWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
+    texture.repeat.set(0.45, 0.45);
+    texture.offset.set(0.275, 0.275);
     texture.needsUpdate = true;
   }, [texture]);
   return <meshStandardMaterial map={texture} roughness={roughness} side={DoubleSide} />;
@@ -110,83 +412,61 @@ function Wall() {
   );
 }
 
-function BusinessCardFace({ data }) {
-  return (
-    <div className="h-[300px] w-[530px] overflow-hidden p-6 text-[#29241b] antialiased [backface-visibility:hidden]">
-    <p className="font-mono text-[10px] uppercase tracking-[.28em] text-[#75664e]">Portfolio / 2026</p>
-      <h1 className="mt-4 text-3xl font-semibold tracking-[-.055em]">{data.hero.name}</h1>
-      <p className="mt-3 max-w-[30rem] text-[14px] leading-5 text-[#5e5546]">{data.hero.tagline}</p>
-      <p className="mt-3 font-mono text-[9px] uppercase tracking-[.14em] text-[#8f7351]">Software systems · ML research · product engineering</p>
-      <div className="mt-7 flex items-center gap-4 text-[12px]">
-        <a className="inline-flex items-center gap-2 underline decoration-[#a77d46] underline-offset-4 focus:outline-2 focus:outline-offset-4 focus:outline-[#6f4823]" href={`mailto:${data.email}`}><Mail className="h-3.5 w-3.5" />{data.email}</a>
-        {data.github && <a className="inline-flex items-center gap-1.5 underline decoration-[#a77d46] underline-offset-4 focus:outline-2 focus:outline-offset-4 focus:outline-[#6f4823]" href={data.github.url} target="_blank" rel="noreferrer"><Github className="h-3.5 w-3.5" />GitHub</a>}
-        {data.linkedin && <a className="inline-flex items-center gap-1.5 underline decoration-[#a77d46] underline-offset-4 focus:outline-2 focus:outline-offset-4 focus:outline-[#6f4823]" href={data.linkedin.url} target="_blank" rel="noreferrer"><Linkedin className="h-3.5 w-3.5" />LinkedIn</a>}
-      </div>
-      <p className="mt-9 font-mono text-[10px] uppercase tracking-[.22em] text-[#8f7351]">Scroll to lift the card</p>
-    </div>
-  );
-}
-
-function TimelineBack({ nodes }) {
-  const experienceNodes = nodes.filter((node) => node.type !== "project");
-  const captureScroll = (event) => {
-    const element = event.currentTarget;
-    const atTop = element.scrollTop <= 0;
-    const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-    if ((event.deltaY < 0 && !atTop) || (event.deltaY > 0 && !atBottom)) event.stopPropagation();
-  };
-
-  return (
-    <section className="h-[300px] w-[530px] overflow-hidden p-5 text-[#29241b] antialiased [backface-visibility:hidden]" aria-labelledby="timeline-heading">
-      <div className="flex items-end justify-between border-b border-[#c8b28a] pb-3">
-        <div><p className="font-mono text-[9px] uppercase tracking-[.22em] text-[#75664e]">Selected timeline</p><h2 id="timeline-heading" className="mt-1 text-2xl font-semibold tracking-[-.05em]">The path so far</h2></div>
-        <span className="font-mono text-[9px] uppercase tracking-[.15em] text-[#8c724d]">{experienceNodes.length} entries</span>
-      </div>
-      <div className="mt-3 grid h-[210px] grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto pr-2 [scrollbar-color:#a98250_transparent]" onWheelCapture={captureScroll} tabIndex={0} aria-label="Scrollable portfolio timeline">
-        {experienceNodes.map((node) => (
-          <article key={node.id || `${node.year}-${node.title}`} className="border-l-2 border-[#9b7d50]/70 pl-2.5">
-            <p className="font-mono text-[8px] uppercase tracking-[.12em] text-[#8c724d]">{node.dateLabel || node.year || "Timeline"} · {node.type || "note"}</p>
-            <h3 className="mt-0.5 text-[11px] font-semibold leading-[1.15]">{node.title || "Untitled entry"}</h3>
-            <p className="mt-0.5 line-clamp-2 text-[9px] leading-3 text-[#63594a]">{node.organization || node.summary || ""}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function BusinessCard({ liftRef, spinRef, data }) {
-  const frontPlaneRef = useRef(null);
-  const backPlaneRef = useRef(null);
-  useFrame(() => {
-    const angle = spinRef.current?.rotation.y || 0;
-    const frontFacing = Math.cos(angle) >= 0;
-    if (frontPlaneRef.current) frontPlaneRef.current.style.visibility = frontFacing ? "visible" : "hidden";
-    if (backPlaneRef.current) backPlaneRef.current.style.visibility = frontFacing ? "hidden" : "visible";
-  });
+  const frontKey = [data.hero.name, data.github?.url, data.linkedin?.url].join("|");
+  const backKey = (data.timeline || [])
+    .filter((node) => node.type !== "project")
+    .map((node) => [node.id || `${node.year}-${node.title}`, node.organization || node.institution || "", node.dateLabel || node.year || ""].join("~"))
+    .join("|");
+
   return (
     <group ref={liftRef} position={CARD_POSITION} rotation={[-Math.PI / 2, 0, 0]}>
       <group ref={spinRef}>
-        <mesh castShadow receiveShadow><boxGeometry args={[CARD_SIZE.width, CARD_SIZE.height, 0.055]} /><PaperMaterial /></mesh>
-        {/* Both planes stay mounted while the parent group flips; the rotation
-            chooses which readable plane is facing the camera. */}
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[CARD_SIZE.width, CARD_SIZE.height, 0.055]} />
+          <PaperMaterial />
+        </mesh>
+        {/* HTML faces are authored in storyFaces/, then baked to mesh textures. */}
         <group position={[0, 0, 0.033]}>
-          <Html transform center distanceFactor={3.2}><div ref={frontPlaneRef}><BusinessCardFace data={data} /></div></Html>
+          <BakedHtmlFace
+            designWidth={CARD_FACE.width}
+            designHeight={CARD_FACE.height}
+            meshWidth={CARD_SIZE.width}
+            meshHeight={CARD_SIZE.height}
+            bakeKey={`card-front:${frontKey}`}
+          >
+            <BusinessCardFront data={data} />
+          </BakedHtmlFace>
         </group>
         <group position={[0, 0, -0.033]} rotation={[0, Math.PI, 0]}>
-          <Html transform center distanceFactor={3.2}><div ref={backPlaneRef} style={{ visibility: "hidden" }}><TimelineBack nodes={data.timeline} /></div></Html>
+          <BakedHtmlFace
+            designWidth={CARD_FACE.width}
+            designHeight={CARD_FACE.height}
+            meshWidth={CARD_SIZE.width}
+            meshHeight={CARD_SIZE.height}
+            bakeKey={`card-back:${backKey}`}
+          >
+            <BusinessCardBack nodes={data.timeline} />
+          </BakedHtmlFace>
         </group>
+        <Html wrapperClass="sr-only" style={{ pointerEvents: "auto" }}>
+          <nav aria-label="Business card contacts">
+            {data.github?.url && <a href={data.github.url} target="_blank" rel="noreferrer">GitHub</a>}
+            {data.linkedin?.url && <a href={data.linkedin.url} target="_blank" rel="noreferrer">LinkedIn</a>}
+          </nav>
+        </Html>
       </group>
     </group>
   );
 }
 
-function demoSource(index) {
-  return DEMO_VIDEOS[index % DEMO_VIDEOS.length];
-}
-
-function VideoThumbnail({ index, title, compact = false }) {
+function VideoThumbnail({ node, index, title, compact = false }) {
   const videoRef = useRef(null);
+  const containerRef = useRef(null);
+  const [inView, setInView] = useState(false);
+  const demo = demoSourceForNode(node, index);
+  const shouldLoad = Boolean(demo?.src && inView);
   const playPreview = () => videoRef.current?.play().catch(() => {});
   const stopPreview = () => {
     const video = videoRef.current;
@@ -194,43 +474,237 @@ function VideoThumbnail({ index, title, compact = false }) {
     video.pause();
     video.currentTime = 0;
   };
-  return <div onPointerEnter={playPreview} onPointerLeave={stopPreview} className={`group relative overflow-hidden bg-black ${compact ? "aspect-video rounded" : "aspect-video rounded-md"}`}>
-    <video ref={videoRef} src={demoSource(index)} muted loop playsInline preload="metadata" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" aria-label={`${title} fire demo preview`} />
-    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
-    <span className={`absolute bottom-2 right-2 rounded bg-red-700/90 font-mono text-white ${compact ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-1 text-[9px]"}`}>Watch</span>
-    <span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-400/80 bg-black/75 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${compact ? "px-2 py-1 text-[9px]" : "px-3 py-1.5 text-[11px]"}`}>Open project</span>
-  </div>;
+  useEffect(() => {
+    if (!demo?.src) return undefined;
+    const nodeEl = containerRef.current;
+    if (!nodeEl) return undefined;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(nodeEl);
+    return () => observer.disconnect();
+  }, [demo?.src]);
+  if (!demo?.src) return null;
+  return (
+    <div
+      ref={containerRef}
+      onPointerEnter={playPreview}
+      onPointerLeave={stopPreview}
+      className={`group relative overflow-hidden bg-black ${compact ? "aspect-video rounded" : "aspect-video rounded-md"}`}
+    >
+      {shouldLoad ? (
+        <video
+          ref={videoRef}
+          src={demo.src}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          aria-label={`${title} demo preview`}
+        />
+      ) : (
+        <div className="h-full w-full bg-neutral-950" aria-hidden="true" />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
+      <span
+        className={`absolute bottom-2 right-2 rounded bg-red-700/90 font-mono text-white ${
+          compact ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-1 text-[9px]"
+        }`}
+      >
+        Open →
+      </span>
+    </div>
+  );
 }
 
 function MonitorProjectCard({ node, index = 0, onOpenProject }) {
   const project = node.project || {};
-  return <button type="button" onClick={() => onOpenProject(node, index)} className="group relative block overflow-hidden rounded-md border border-red-950 bg-[#100303] text-left text-slate-100 shadow-lg transition hover:border-red-500 focus:outline-2 focus:outline-offset-2 focus:outline-red-400">
-    <VideoThumbnail index={index} title={projectTitle(node)} />
-    <div className="p-2.5"><p className="font-mono text-[8px] uppercase tracking-[.16em] text-red-400">Case {String(index + 1).padStart(2, "0")} · {node.dateLabel || node.year || "Project"}</p><h3 className="mt-1 text-[13px] font-semibold leading-tight group-hover:text-red-200">{projectTitle(node)}</h3><p className="mt-1 line-clamp-3 text-[10px] leading-[.875rem] text-slate-400">{projectSummary(node)}</p></div>
-  </button>;
+  return (
+    <button
+      type="button"
+      onClick={(event) => onOpenProject?.(project, event.currentTarget)}
+      className="group relative block overflow-hidden rounded-md border border-red-950 bg-[#100303] text-left text-slate-100 shadow-lg transition hover:border-red-500 focus:outline-2 focus:outline-offset-2 focus:outline-red-400"
+    >
+      <VideoThumbnail node={node} index={index} title={projectTitle(node)} />
+      <div className="p-2.5">
+        <p className="font-mono text-[8px] uppercase tracking-[.16em] text-red-400">
+          Case {String(index + 1).padStart(2, "0")} · {node.dateLabel || node.year || "Project"}
+        </p>
+        <h3 className="mt-1 text-[13px] font-semibold leading-tight group-hover:text-red-200">
+          {projectTitle(node)}
+        </h3>
+        <p className="mt-1 line-clamp-3 text-[10px] leading-[.875rem] text-slate-400">
+          {projectSummary(node)}
+        </p>
+      </div>
+    </button>
+  );
 }
 
 function ProjectMetadata({ project }) {
   const tags = [...new Set([...(project.tags || []), ...(project.technologies || [])])];
   const links = Array.isArray(project.links) ? project.links : [];
-  return <><div className="mt-5 flex flex-wrap gap-1.5">{tags.map((tag) => <span key={tag} className="rounded border border-red-950 px-2 py-1 font-mono text-[9px] text-red-100">{tag}</span>)}</div><div className="mt-5 grid gap-2">{links.map((link) => <a key={`${link.label}-${link.url}`} href={link.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-between rounded border border-red-900 px-3 py-2 text-xs hover:border-red-400">{link.label || "Open link"}<ExternalLink className="h-3.5 w-3.5" /></a>)}</div></>;
+  return (
+    <>
+      <div className="mt-5 flex flex-wrap gap-1.5">
+        {tags.map((tag) => (
+          <span key={tag} className="rounded border border-red-950 px-2 py-1 font-mono text-[9px] text-red-100">
+            {tag}
+          </span>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-2">
+        {links.map((link) => (
+          <a
+            key={`${link.label}-${link.url}`}
+            href={link.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-between rounded border border-red-900 px-3 py-2 text-xs hover:border-red-400"
+          >
+            {link.label || "Open link"}
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ))}
+      </div>
+    </>
+  );
 }
 
 function MonitorProjectDetail({ node, index, projects, onSelect, onClose, scrollRef, onWheel }) {
   const project = node.project || {};
-  const overview = (Array.isArray(project.overview) ? project.overview : [project.overview || projectSummary(node)]).filter(Boolean);
-  const highlights = Array.isArray(project.highlights) ? project.highlights : [];
-  const architecture = Array.isArray(project.architectureSections) ? project.architectureSections : [];
-  const phases = Array.isArray(project.timeline) ? project.timeline : [];
-  return <article ref={scrollRef} onWheel={onWheel} className="h-full overflow-y-auto rounded-md border border-red-950 bg-black p-4 text-slate-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div className="flex items-start justify-between gap-4 border-b border-red-950 pb-3"><div><p className="font-mono text-[9px] uppercase tracking-[.2em] text-red-500">Case study {String(index + 1).padStart(2, "0")}</p><h2 className="mt-1 text-2xl font-semibold">{projectTitle(node)}</h2><p className="mt-1 text-xs text-slate-400">{project.subtitle || node.dateLabel}</p></div><button type="button" onClick={onClose} className="shrink-0 rounded border border-red-900 px-2.5 py-1.5 text-[10px] text-white hover:border-red-400 focus:outline-2 focus:outline-offset-2 focus:outline-red-400">All projects</button></div>
-    <div className="mt-4 grid grid-cols-[minmax(0,1fr)_190px] gap-4"><div><video src={demoSource(index)} controls autoPlay muted loop playsInline className="aspect-video w-full rounded-md bg-black object-cover" aria-label={`${projectTitle(node)} demo`} /><section className="mt-4"><h3 className="font-mono text-[10px] uppercase tracking-[.18em] text-amber-300">Description</h3><div className="mt-2 space-y-3 text-[12px] leading-5 text-slate-200">{overview.map((paragraph, paragraphIndex) => <p key={paragraphIndex}>{paragraph}</p>)}</div>{highlights.length > 0 && <ul className="mt-4 grid gap-1.5 border-l border-amber-300/50 pl-3 text-[11px] leading-4 text-slate-300">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>}{phases.map((phase) => <section key={phase.title} className="mt-5 rounded border border-slate-800 bg-slate-900/50 p-3"><h4 className="text-sm font-semibold">{phase.title}</h4>{phase.description && <p className="mt-1 text-[11px] leading-4 text-slate-300">{phase.description}</p>}{phase.features?.length > 0 && <ul className="mt-2 grid gap-1 text-[10px] leading-4 text-slate-400">{phase.features.map((feature) => <li key={feature}>• {feature}</li>)}</ul>}</section>)}{architecture.map((section) => <section key={section.title} className="mt-5 border-t border-slate-800 pt-4"><h4 className="text-sm font-semibold">{section.title}</h4>{section.content && <p className="mt-1 text-[11px] leading-4 text-slate-300">{section.content}</p>}{section.points?.length > 0 && <ul className="mt-2 grid gap-1 text-[10px] leading-4 text-slate-400">{section.points.map((point) => <li key={point}>• {point}</li>)}</ul>}{section.subsections?.map((subsection) => <div key={subsection.title} className="mt-3 rounded bg-slate-900/70 p-3"><h5 className="text-[11px] font-semibold text-slate-100">{subsection.title}</h5>{subsection.content && <p className="mt-1 text-[10px] leading-4 text-slate-400">{subsection.content}</p>}{subsection.points?.length > 0 && <ul className="mt-2 grid gap-1 text-[10px] leading-4 text-slate-400">{subsection.points.map((point) => <li key={point}>• {point}</li>)}</ul>}</div>)}</section>)}<ProjectMetadata project={project} /></section></div>
-      <aside className="border-l border-slate-800 pl-3"><p className="font-mono text-[9px] uppercase tracking-[.16em] text-slate-400">Recommended demos</p><div className="mt-3 grid gap-3">{projects.map((recommendation, recommendationIndex) => recommendationIndex === index ? null : <button key={recommendation.id} type="button" onClick={() => onSelect(recommendationIndex)} className="rounded border border-slate-800 bg-slate-900/40 p-1.5 text-left transition hover:border-amber-300 focus:outline-2 focus:outline-offset-2 focus:outline-white"><VideoThumbnail index={recommendationIndex} title={projectTitle(recommendation)} compact /><p className="mt-1.5 line-clamp-2 px-0.5 text-[10px] font-medium leading-3 text-white">{projectTitle(recommendation)}</p><p className="mt-1 px-0.5 font-mono text-[8px] text-slate-500">Demo {String(recommendationIndex + 1).padStart(2, "0")}</p></button>)}</div></aside>
-    </div>
-  </article>;
+  const demo = demoSourceForNode(node, index);
+  const features = Array.isArray(project.features) ? project.features : [];
+  const highlights = features.length === 0 && Array.isArray(project.highlights) ? project.highlights : [];
+  const summary = project.shortDescription || projectSummary(node);
+
+  return (
+    <article
+      ref={scrollRef}
+      onWheel={onWheel}
+      className="h-full overflow-y-auto rounded-md border border-red-950 bg-black p-4 text-slate-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <div className="flex items-start justify-between gap-4 border-b border-red-950 pb-3">
+        <div>
+          <p className="font-mono text-[9px] uppercase tracking-[.2em] text-red-500">
+            Case study {String(index + 1).padStart(2, "0")}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold">{projectTitle(node)}</h2>
+          <p className="mt-1 text-xs text-slate-400">{project.subtitle || node.dateLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded border border-red-900 px-2.5 py-1.5 text-[10px] text-white hover:border-red-400 focus:outline-2 focus:outline-offset-2 focus:outline-red-400"
+        >
+          All projects
+        </button>
+      </div>
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_190px] gap-4">
+        <div>
+          {demo?.src && (
+            <a
+              href={demo.href || undefined}
+              target={demo.href ? "_blank" : undefined}
+              rel={demo.href ? "noreferrer" : undefined}
+              className={demo.href ? "block" : undefined}
+            >
+              <video
+                src={demo.src}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="aspect-video w-full rounded-md bg-black object-cover"
+                aria-label={`${projectTitle(node)} demo`}
+              />
+            </a>
+          )}
+          <section className="mt-4">
+            <h3 className="font-mono text-[10px] uppercase tracking-[.18em] text-amber-300">Overview</h3>
+            <p className="mt-2 text-[12px] leading-5 text-slate-200">{summary}</p>
+            {features.length > 0 && (
+              <ul className="mt-4 grid gap-3">
+                {features.map((feature) => {
+                  const title = typeof feature === "string" ? feature : feature.title;
+                  const description = typeof feature === "string" ? null : feature.description;
+                  return (
+                    <li key={title} className="border-l border-amber-300/50 pl-3">
+                      <div className="text-[12px] font-semibold text-slate-100">{title}</div>
+                      {description && (
+                        <p className="mt-1 text-[11px] leading-4 text-slate-400">{description}</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {highlights.length > 0 && (
+              <ul className="mt-4 grid gap-1.5 border-l border-amber-300/50 pl-3 text-[11px] leading-4 text-slate-300">
+                {highlights.map((highlight) => (
+                  <li key={highlight}>{highlight}</li>
+                ))}
+              </ul>
+            )}
+            <ProjectMetadata project={project} />
+          </section>
+        </div>
+        <aside className="border-l border-slate-800 pl-3">
+          <p className="font-mono text-[9px] uppercase tracking-[.16em] text-slate-400">Other projects</p>
+          <div className="mt-3 grid gap-3">
+            {projects.map((recommendation, recommendationIndex) =>
+              recommendationIndex === index ? null : (
+                <button
+                  key={recommendation.id}
+                  type="button"
+                  onClick={() => onSelect(recommendationIndex)}
+                  className="rounded border border-slate-800 bg-slate-900/40 p-1.5 text-left transition hover:border-amber-300 focus:outline-2 focus:outline-offset-2 focus:outline-white"
+                >
+                  <VideoThumbnail
+                    node={recommendation}
+                    index={recommendationIndex}
+                    title={projectTitle(recommendation)}
+                    compact
+                  />
+                  <p className="mt-1.5 line-clamp-2 px-0.5 text-[10px] font-medium leading-3 text-white">
+                    {projectTitle(recommendation)}
+                  </p>
+                </button>
+              ),
+            )}
+          </div>
+        </aside>
+      </div>
+    </article>
+  );
 }
 
-function MonitorScreen({ interactive, onScrollControllerChange, screenScale, hidden }) {
+function MonitorScreen({ interactive, onScrollControllerChange, screenScale, hidden, edgeHint }) {
+  // Keep one Html portal across lock/unlock — remounting flashed a second non-interactive
+  // frame and also left stale pointer-events on drei's CSS3D wrapper.
+  useLayoutEffect(() => {
+    const live = document.querySelectorAll(".monitor-html-live");
+    const ignored = document.querySelectorAll(".monitor-html-ignore");
+    live.forEach((node) => {
+      node.style.pointerEvents = "auto";
+    });
+    ignored.forEach((node) => {
+      node.style.pointerEvents = "none";
+    });
+  }, [interactive, hidden]);
+
   if (hidden) return null;
   // Render a full-size portfolio layout, then CSS-scale it into the GLTF screen
   // so the monitor preview matches fullscreen proportions (not a comically large type scale).
@@ -240,74 +714,217 @@ function MonitorScreen({ interactive, onScrollControllerChange, screenScale, hid
   const scale = frameWidth / virtualWidth;
   const virtualHeight = frameHeight / scale;
   return (
-    <Html transform occlude center distanceFactor={MONITOR_SCREEN.distanceFactor * screenScale} position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z + 0.007]} pointerEvents={interactive ? "auto" : "none"}>
-      <section className="overflow-hidden bg-black text-white antialiased [isolation:isolate]" style={{ width: frameWidth, height: frameHeight }} aria-label="Portfolio monitor" aria-hidden={!interactive}>
-        <div className="origin-top-left" style={{ width: virtualWidth, height: virtualHeight, transform: `scale(${scale})` }}>
-          <Portfolio mode="monitor" className="h-full" onScrollControllerChange={interactive ? onScrollControllerChange : undefined} />
+    <Html
+      transform
+      center
+      distanceFactor={MONITOR_SCREEN.distanceFactor * screenScale}
+      position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z + 0.007]}
+      pointerEvents={interactive ? "auto" : "none"}
+      wrapperClass={interactive ? "monitor-html-live" : "monitor-html-ignore"}
+      style={{ pointerEvents: interactive ? "auto" : "none" }}
+      zIndexRange={[10, 0]}
+    >
+      <section
+        className="relative overflow-hidden bg-black text-white antialiased [isolation:isolate]"
+        style={{ width: frameWidth, height: frameHeight, pointerEvents: interactive ? "auto" : "none" }}
+        aria-label="Portfolio monitor"
+        aria-hidden={!interactive}
+      >
+        <div className="origin-top-left" style={{ width: virtualWidth, height: virtualHeight, transform: `scale(${scale})`, pointerEvents: interactive ? "auto" : "none" }}>
+          <Portfolio mode="monitor" loadMedia={interactive} className="h-full" onScrollControllerChange={interactive ? onScrollControllerChange : undefined} />
         </div>
+        <MonitorEdgeHint edge={edgeHint} />
       </section>
     </Html>
   );
 }
 
-function Monitor({ onReady, interactive, onScrollControllerChange, tuning, screenHidden }) {
+function Monitor({ onReady, interactive, onScrollControllerChange, tuning, screenHidden, edgeHint }) {
   useEffect(() => onReady?.(), [onReady]);
   return (
     <group position={monitorPosition(tuning.modelScale)} scale={tuning.modelScale}>
       {/* GLTFJSX keeps the screen, bezel, stand, and controls in their authored hierarchy. */}
       <group position={MONITOR_MODEL_OFFSET} scale={0.003}><MonitorModel /></group>
-      <mesh position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z]}><planeGeometry args={[MONITOR_SCREEN.width, MONITOR_SCREEN.height]} /><meshStandardMaterial color="#020617" roughness={0.32} /></mesh>
-      <MonitorScreen interactive={interactive} onScrollControllerChange={onScrollControllerChange} screenScale={tuning.screenScale} hidden={screenHidden} />
+      {/* Skip raycasts so the backdrop plane can't steal pointer hits from the Html screen. */}
+      <mesh position={[0, MONITOR_SCREEN.y, MONITOR_SCREEN.z]} raycast={() => null}>
+        <planeGeometry args={[MONITOR_SCREEN.width, MONITOR_SCREEN.height]} />
+        <meshStandardMaterial color="#020617" roughness={0.32} />
+      </mesh>
+      <MonitorScreen interactive={interactive} onScrollControllerChange={onScrollControllerChange} screenScale={tuning.screenScale} hidden={screenHidden} edgeHint={edgeHint} />
     </group>
   );
 }
 
+
 function Letter({ data }) {
+  const bakeKey = [data.email, data.github?.url, data.linkedin?.url].join("|");
   return (
     <group position={LETTER_POSITION} rotation={[-Math.PI / 2, 0, 0.14]}>
-      <mesh castShadow receiveShadow><boxGeometry args={[LETTER_SIZE.width, LETTER_SIZE.height, 0.075]} /><EnvelopeMaterial /></mesh>
-      <Html transform center distanceFactor={4.28} position={[0, 0, 0.037]}>
-        <section className="relative grid h-[320px] w-[510px] grid-rows-[auto_1fr] overflow-hidden p-8 text-[#6b3827] antialiased [text-rendering:optimizeLegibility]" aria-label="Contact envelope">
-          <p className="row-start-1 mt-3 self-start font-[Indie_Flower,cursive] text-[21px] tracking-[.03em]">Address:</p>
-          <div className="absolute right-7 top-6 flex gap-2"><a href={data.linkedin?.url || "#"} target="_blank" rel="noreferrer" className="relative flex h-[78px] w-[78px] -rotate-6 items-center justify-center focus:outline-2 focus:outline-offset-3 focus:outline-[#6b3827]" aria-label="Akshat on LinkedIn"><img src="/assets/stamp.webp" alt="" className="absolute inset-0 h-full w-full object-contain" /><Linkedin className="relative h-5 w-5 text-[#7d4430]" /></a><a href={data.github?.url || "#"} target="_blank" rel="noreferrer" className="relative flex h-[78px] w-[78px] rotate-3 items-center justify-center focus:outline-2 focus:outline-offset-3 focus:outline-[#6b3827]" aria-label="Akshat on GitHub"><img src="/assets/stamp.webp" alt="" className="absolute inset-0 h-full w-full object-contain" /><Github className="relative h-5 w-5 text-[#7d4430]" /></a></div>
-          <a href={`mailto:${data.email}`} className="row-start-2 mt-3 flex w-max max-w-none items-start self-center whitespace-nowrap font-[Indie_Flower,cursive] text-[32px] leading-none text-[#6b3827] focus:outline-2 focus:outline-offset-2 focus:outline-[#6b3827]" aria-label={`Email ${data.email}`}>{data.email}</a>
-        </section>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[LETTER_SIZE.width, LETTER_SIZE.height, 0.075]} />
+        <EnvelopeMaterial />
+      </mesh>
+      <group position={[0, 0, 0.038]}>
+        <BakedHtmlFace
+          designWidth={LETTER_FACE.width}
+          designHeight={LETTER_FACE.height}
+          meshWidth={LETTER_SIZE.width}
+          meshHeight={LETTER_SIZE.height}
+          bakeKey={`letter:${bakeKey}`}
+        >
+          <LetterFace data={data} />
+        </BakedHtmlFace>
+      </group>
+      <Html wrapperClass="sr-only" style={{ pointerEvents: "auto" }}>
+        <nav aria-label="Contact envelope">
+          {data.linkedin?.url && <a href={data.linkedin.url} target="_blank" rel="noreferrer">Akshat on LinkedIn</a>}
+          {data.github?.url && <a href={data.github.url} target="_blank" rel="noreferrer">Akshat on GitHub</a>}
+          <a href={`mailto:${data.email}`}>Email {data.email}</a>
+        </nav>
       </Html>
     </group>
   );
 }
 
-function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress, setCardFace, sceneReady, monitorTuning, cameraViewActive }) {
+function PolaroidProps({ scale, fanAB, fanBC, tuning }) {
+  return (
+    <group
+      position={[tuning.stackX, tuning.stackY, tuning.stackZ]}
+      rotation={[tuning.stackRotX * DEG, tuning.stackRotY * DEG, tuning.stackRotZ * DEG]}
+    >
+      <group position={[0.1, 0.01, 0.05]} rotation={[0, fanAB + fanBC, 0]}>
+        <PolaroidModel scale={scale} />
+      </group>
+      <group position={[0.04, 0.045, 0.02]} rotation={[0, fanAB, 0]}>
+        <PolaroidModel scale={scale} />
+      </group>
+      <group position={[0, 0.08, 0]}>
+        <PolaroidModel scale={scale} />
+        <group
+          position={[tuning.camX, tuning.camY, tuning.camZ]}
+          rotation={[tuning.camRotX * DEG, tuning.camRotY * DEG, tuning.camRotZ * DEG]}
+          scale={tuning.camScale}
+        >
+          <PolaroidCameraModel />
+        </group>
+      </group>
+    </group>
+  );
+}
+
+function PolaroidStack({ floatRef, enabled }) {
+  const tuning = POLAROID_TUNING;
+  const scale = tuning.stackScale;
+  const fanAB = tuning.fanAB * DEG;
+  const fanBC = tuning.fanBC * DEG;
+  // Float anchor always mounts (scroll timeline target). Heavy GLTFs sit in their
+  // own Suspense so a load suspension cannot clear the float ref.
+  return (
+    <>
+      {enabled && (
+        <Suspense fallback={null}>
+          <PolaroidProps scale={scale} fanAB={fanAB} fanBC={fanBC} tuning={tuning} />
+        </Suspense>
+      )}
+      <group
+        ref={floatRef}
+        rotation={[tuning.floatRotX * DEG, tuning.floatRotY * DEG, tuning.floatRotZ * DEG]}
+      >
+        {enabled && (
+          <Suspense fallback={null}>
+            <PolaroidModel scale={scale} />
+          </Suspense>
+        )}
+      </group>
+    </>
+  );
+}
+
+function StoryCameraRig({ liftRef, spinRef, floatRef, rootRef, setPhase, setStoryProgress, setCardFace, setMonitorHoldActive, sceneReady, monitorTuning, cameraViewActive, holdMonitorCamera, introPhase, onIntroComplete }) {
   const { camera, viewport, size } = useThree((state) => ({ camera: state.camera, viewport: state.viewport, size: state.size }));
   const target = useRef({ x: CARD_POSITION[0], y: CARD_POSITION[1], z: CARD_POSITION[2] });
   const cameraViewActiveRef = useRef(cameraViewActive);
+  const polaroidHoldRef = useRef(false);
+  const introHoldRef = useRef(false);
+  const holdMonitorCameraRef = useRef(holdMonitorCamera);
   cameraViewActiveRef.current = cameraViewActive;
-  useFrame(() => camera.lookAt(target.current.x, target.current.y, target.current.z));
+  holdMonitorCameraRef.current = holdMonitorCamera;
+
+  useFrame(() => {
+    if (holdMonitorCameraRef.current || introHoldRef.current) {
+      const poses = getStoryCameraPoses(camera.fov, viewport.aspect, monitorTuning, size.height);
+      camera.position.set(poses.monitorCamera.x, poses.monitorCamera.y, poses.monitorCamera.z);
+      Object.assign(target.current, poses.monitorTarget);
+    } else if (polaroidHoldRef.current) {
+      const framing = getPolaroidFraming(camera.fov, viewport.aspect);
+      camera.position.set(framing.camera.x, framing.camera.y, framing.camera.z);
+      Object.assign(target.current, framing.target);
+    }
+    camera.lookAt(target.current.x, target.current.y, target.current.z);
+  });
+
+  // Keep the camera on the monitor lock while the DOM portfolio covers the canvas,
+  // so snapping the overlay away never flashes the chapter-1 card framing.
+  useLayoutEffect(() => {
+    const shouldHold = holdMonitorCamera || introPhase === "pin-monitor";
+    if (!shouldHold) {
+      if (introPhase !== "zoom-out") introHoldRef.current = false;
+      return undefined;
+    }
+    const poses = getStoryCameraPoses(camera.fov, viewport.aspect, monitorTuning, size.height);
+    const trigger = ScrollTrigger.getById("portfolio-story");
+    trigger?.disable(false);
+    introHoldRef.current = true;
+    polaroidHoldRef.current = false;
+    camera.position.set(poses.monitorCamera.x, poses.monitorCamera.y, poses.monitorCamera.z);
+    Object.assign(target.current, poses.monitorTarget);
+    return undefined;
+  }, [camera, holdMonitorCamera, introPhase, monitorTuning, size.height, viewport.aspect]);
+
+  // Reverse of the part-4 zoom-in: pull back from the monitor and pan to the part-1 card.
+  useEffect(() => {
+    if (introPhase !== "zoom-out") return undefined;
+    const poses = getStoryCameraPoses(camera.fov, viewport.aspect, monitorTuning, size.height);
+    introHoldRef.current = false;
+    holdMonitorCameraRef.current = false;
+    camera.position.set(poses.monitorCamera.x, poses.monitorCamera.y, poses.monitorCamera.z);
+    Object.assign(target.current, poses.monitorTarget);
+    const tween = gsap.timeline({
+      defaults: { duration: INTRO_ZOOM_DURATION, ease: "power1.inOut" },
+      onComplete: () => {
+        window.scrollTo(0, 0);
+        const trigger = ScrollTrigger.getById("portfolio-story");
+        trigger?.animation?.progress(0);
+        trigger?.enable(true);
+        requestAnimationFrame(() => {
+          ScrollTrigger.refresh();
+          ScrollTrigger.update();
+        });
+        onIntroComplete?.();
+      },
+    });
+    tween
+      .to(camera.position, { ...poses.cardCamera })
+      .to(target.current, { ...poses.cardTarget }, "<");
+    return () => {
+      tween.kill();
+    };
+  }, [camera, introPhase, monitorTuning, onIntroComplete, size.height, viewport.aspect]);
+
   useLayoutEffect(() => {
     const card = liftRef.current;
     const spin = spinRef.current;
+    const floatGroup = floatRef?.current;
     if (!card || !spin || !rootRef.current) return undefined;
-    const narrow = viewport.aspect < 0.8;
-    // The smaller card footprint is fitted against both live viewport axes.
-    // This is applied before the first overhead frame, not only during the timeline beat.
-    const baseCardScale = Math.min(1, viewport.width * (narrow ? 0.76 : 0.72) / CARD_SIZE.width, viewport.height * 0.72 / CARD_SIZE.height);
-    const cardScale = baseCardScale;
-    card.scale.setScalar(baseCardScale);
+    const { narrow } = getStoryCameraPoses(camera.fov || (viewport.aspect < 0.8 ? 39 : 43), viewport.aspect, monitorTuning, size.height);
+    // Card stays at authored size; camera distance adapts to the viewport so
+    // landscape phones get a close, readable overhead instead of a shrunk mesh.
+    card.scale.setScalar(1);
     camera.fov = narrow ? 39 : 43;
     camera.updateProjectionMatrix();
-    // Fit the real GLTF display (not an arbitrary DOM canvas) to the safe monitor
-    // frame in either a wide desktop window or a square/tall browser viewport.
+    const refreshed = getStoryCameraPoses(camera.fov, viewport.aspect, monitorTuning, size.height);
+    const flipPullY = refreshed.cardDistance * CARD_FLIP_PULL_FACTOR;
     const halfVerticalFov = Math.tan((camera.fov * Math.PI) / 360);
-    const monitorDistance = Math.max(
-      (MONITOR_SCREEN.width * monitorTuning.modelScale) / (2 * halfVerticalFov * viewport.aspect * monitorTuning.frameFill),
-      (MONITOR_SCREEN.height * monitorTuning.modelScale) / (2 * halfVerticalFov * monitorTuning.frameFill),
-    );
-    const monitorY = monitorPosition(monitorTuning.modelScale)[1];
-    const monitorCamera = {
-      x: 0,
-      y: monitorY + MONITOR_SCREEN.y * monitorTuning.modelScale,
-      z: MONITOR_POSITION[2] + monitorDistance * 0.98 + monitorTuning.cameraZLift,
-    };
     const letterDistance = Math.max(
       LETTER_SIZE.width / (2 * halfVerticalFov * viewport.aspect * 0.5),
       LETTER_SIZE.height / (2 * halfVerticalFov * 0.6),
@@ -317,46 +934,94 @@ function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress,
       y: LETTER_POSITION[1] + letterDistance * 0.998,
       z: LETTER_POSITION[2],
     };
-    const cardCamera = { x: CARD_POSITION[0], y: narrow ? 7.7 : 6.5, z: CARD_POSITION[2] };
-    camera.position.set(cardCamera.x, cardCamera.y, cardCamera.z);
-    Object.assign(target.current, { x: CARD_POSITION[0], y: CARD_POSITION[1], z: CARD_POSITION[2] });
+    const polaroidFraming = getPolaroidFraming(camera.fov, viewport.aspect);
+    const APPROACH_MID = 0.30;
+    const midCamera = {
+      x: polaroidFraming.camera.x + (refreshed.monitorCamera.x - polaroidFraming.camera.x) * APPROACH_MID,
+      y: polaroidFraming.camera.y + (refreshed.monitorCamera.y - polaroidFraming.camera.y) * APPROACH_MID,
+      z: polaroidFraming.camera.z + (refreshed.monitorCamera.z - polaroidFraming.camera.z) * APPROACH_MID,
+    };
+    const midTarget = {
+      x: polaroidFraming.target.x + (refreshed.monitorTarget.x - polaroidFraming.target.x) * APPROACH_MID,
+      y: polaroidFraming.target.y + (refreshed.monitorTarget.y - polaroidFraming.target.y) * APPROACH_MID,
+      z: polaroidFraming.target.z + (refreshed.monitorTarget.z - polaroidFraming.target.z) * APPROACH_MID,
+    };
+    // Only seed the card framing on a cold start. Rebuilding mid-scroll used to snap
+    // the camera to chapter 1 for a frame (the "reset canvas" flash on 4→3 / 4→5).
+    const scrollRoot = rootRef.current;
+    const scrollable = Math.max(1, (scrollRoot?.offsetHeight || 0) - window.innerHeight);
+    const scrollProgress = Math.min(1, Math.max(0, window.scrollY / scrollable));
+    if (!introHoldRef.current && !holdMonitorCameraRef.current && scrollProgress < 0.001) {
+      camera.position.set(refreshed.cardCamera.x, refreshed.cardCamera.y, refreshed.cardCamera.z);
+      Object.assign(target.current, refreshed.cardTarget);
+    }
+    if (floatGroup) {
+      floatGroup.position.set(POLAROID_EJECT_START[0], POLAROID_EJECT_START[1], POLAROID_EJECT_START[2]);
+    }
     const ctx = gsap.context(() => {
       const timeline = gsap.timeline({ defaults: { ease: "none" } });
+      const approachDuration = 1.55;
+      const ejectDuration = 1.35;
       timeline
         .addLabel("card-overhead")
-        .to({}, { duration: 0.45 })
+        .to({}, { duration: 0.55 })
+        .addLabel("card-depart")
         .to(card.position, { y: 2.1, duration: 0.85 })
         // Finish pulling back while the card rises, before any rotation begins.
         // This keeps every intermediate flip frame inside the viewport.
-        .to(camera.position, { x: CARD_POSITION[0], y: narrow ? 12 : 10.5, z: CARD_POSITION[2], duration: 0.85 }, "<")
+        .to(camera.position, { x: CARD_POSITION[0], y: flipPullY, z: CARD_POSITION[2], duration: 0.85 }, "<")
         .to(target.current, { x: CARD_POSITION[0], y: 1.35, z: CARD_POSITION[2], duration: 0.85 }, "<")
         .addLabel("card-lift")
         .to(spin.rotation, { y: Math.PI, duration: 0.9 })
         // Set the card back on the desk before showing its experience side.
         .to(card.position, { y: 0.02, duration: 0.55 })
         // Ease back to the opening's effective card distance for the stable read.
-        .to(camera.position, { ...cardCamera, duration: 0.7 })
-        .to(target.current, { x: CARD_POSITION[0], y: CARD_POSITION[1], z: CARD_POSITION[2], duration: 0.7 }, "<")
-        // This preserves the fitted card dimensions after the camera has pulled back.
-        .to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: 0.45 })
+        .to(camera.position, { ...refreshed.cardCamera, duration: 0.7 })
+        .to(target.current, { ...refreshed.cardTarget, duration: 0.7 }, "<")
         // Experience locks only once the flipped card has returned to its close,
         // readable framing; the next movement begins from this settled state.
         .addLabel("timeline-read")
-        .to({}, { duration: 1.35 })
+        .to({}, { duration: 1.2 })
+        // Smooth slide from settled flipped card → live polaroid overhead.
+        .addLabel("polaroid-approach")
+        .to(camera.position, { ...polaroidFraming.camera, duration: 1.55, ease: "power1.inOut" })
+        .to(target.current, { ...polaroidFraming.target, duration: 1.55, ease: "power1.inOut" }, "<")
+        .addLabel("polaroid")
+        .to({}, { duration: 0.75 })
+        // Leave polaroid overhead → early mid-point toward the monitor.
         .addLabel("monitor-approach")
-        .to(camera.position, { ...monitorCamera, duration: 1.25 })
-        .to(target.current, { x: 0, y: monitorY + MONITOR_SCREEN.y * monitorTuning.modelScale, z: MONITOR_POSITION[2], duration: 1.25 }, "<")
+        .to(camera.position, { ...midCamera, duration: approachDuration * APPROACH_MID, ease: "power1.inOut" })
+        .to(target.current, { ...midTarget, duration: approachDuration * APPROACH_MID, ease: "power1.inOut" }, "<")
+        // Pseudo-stop (unnumbered): camera holds while scroll drives the photo eject.
+        .addLabel("polaroid-eject");
+      if (floatGroup) {
+        const ejectStep = ejectDuration / (POLAROID_EJECT_KEYFRAMES.length - 1);
+        for (let i = 1; i < POLAROID_EJECT_KEYFRAMES.length; i += 1) {
+          const [x, y, z] = POLAROID_EJECT_KEYFRAMES[i];
+          timeline.to(floatGroup.position, { x, y, z, duration: ejectStep, ease: "none" });
+        }
+      } else {
+        timeline.to({}, { duration: ejectDuration });
+      }
+      timeline
+        // Eject finished — complete the remaining approach into the monitor lock.
+        .addLabel("monitor-finish")
+        .to(camera.position, { ...refreshed.monitorCamera, duration: approachDuration * (1 - APPROACH_MID), ease: "power1.inOut" })
+        .to(target.current, { ...refreshed.monitorTarget, duration: approachDuration * (1 - APPROACH_MID), ease: "power1.inOut" }, "<")
         .addLabel("monitor")
-        // The camera is completely still here. The page wheel is routed to the
-        // project list until it reaches an edge, regardless of pointer position.
-        .to({}, { duration: 1.35 })
-        .addLabel("letter")
+        // Short park beat for the locked monitor list. Keep this small so leave snaps
+        // don't haul the sidebar across a huge empty scrub range.
+        .to({}, { duration: 0.25 })
+        .addLabel("letter-approach")
         // The letter sits in front of the monitor, so this move never clips through it.
+        // Label after the settle — same pattern as polaroid/monitor — so chapter 05 lands on the letter.
         .to(camera.position, { ...letterCamera, duration: 1.05 })
         .to(target.current, { x: 0, y: LETTER_POSITION[1], z: LETTER_POSITION[2], duration: 1.05 }, "<")
+        .addLabel("letter")
         .to({}, { duration: 0.8 });
       let lastPhase = 1;
       let lastCardFace = "front";
+      let lastMonitorHold = false;
       ScrollTrigger.create({
         id: "portfolio-story",
         trigger: rootRef.current,
@@ -370,31 +1035,100 @@ function StoryCameraRig({ liftRef, spinRef, rootRef, setPhase, setStoryProgress,
           if (!cameraViewActiveRef.current) return;
           setStoryProgress(self.progress);
           const storyTime = self.progress * timeline.duration();
+          // Overhead lock only for the polaroid hold — release once the 3→4 pan begins.
+          polaroidHoldRef.current = storyTime >= timeline.labels.polaroid && storyTime < timeline.labels["monitor-approach"];
           // Neither DOM face is rendered while the physical card rotates. This is
           // deliberate: showing the reverse HTML through the front creates mirror text.
           const nextCardFace = storyTime < timeline.labels["card-lift"] ? "front" : storyTime < timeline.labels["timeline-read"] ? "none" : "back";
           if (nextCardFace !== lastCardFace) { lastCardFace = nextCardFace; setCardFace(nextCardFace); }
-          const next = storyTime < timeline.labels["card-lift"] ? 1 : storyTime < timeline.labels.monitor ? 2 : storyTime < timeline.labels.letter ? 3 : 4;
+          // Phase is the parked lock (1–5), or 0 while traveling between locks.
+          // Do not scrollTo from here — mutating scroll inside onUpdate slingshots the scrub.
+          const monitorT = timeline.labels.monitor;
+          const letterApproachT = timeline.labels["letter-approach"];
+          let next = 0;
+          for (let i = 0; i < STORY_LOCK_HOLDS.length; i += 1) {
+            const { lock, until } = STORY_LOCK_HOLDS[i];
+            const lockT = timeline.labels[lock];
+            const untilT = until ? timeline.labels[until] : timeline.duration();
+            if (storyTime >= lockT && (until ? storyTime < untilT : storyTime <= untilT)) {
+              next = i + 1;
+              break;
+            }
+          }
           if (next !== lastPhase) { lastPhase = next; setPhase(next); }
+          const monitorHold = storyTime >= monitorT && storyTime < letterApproachT;
+          if (monitorHold !== lastMonitorHold) {
+            lastMonitorHold = monitorHold;
+            setMonitorHoldActive(monitorHold);
+          }
         },
       });
+      // Snap the scrub target to the current scroll immediately so a mid-story
+      // rebuild never eases from progress 0 (card) through a visible flash.
+      if (!introHoldRef.current && !holdMonitorCameraRef.current && scrollProgress > 0.001) {
+        timeline.progress(scrollProgress);
+        ScrollTrigger.getById("portfolio-story")?.getTween()?.progress(1);
+        const storyTime = scrollProgress * timeline.duration();
+        polaroidHoldRef.current = storyTime >= timeline.labels.polaroid && storyTime < timeline.labels["monitor-approach"];
+        const monitorHold = storyTime >= timeline.labels.monitor && storyTime < timeline.labels["letter-approach"];
+        lastMonitorHold = monitorHold;
+        setMonitorHoldActive(monitorHold);
+        setStoryProgress(scrollProgress);
+        let next = 0;
+        for (let i = 0; i < STORY_LOCK_HOLDS.length; i += 1) {
+          const { lock, until } = STORY_LOCK_HOLDS[i];
+          const lockT = timeline.labels[lock];
+          const untilT = until ? timeline.labels[until] : timeline.duration();
+          if (storyTime >= lockT && (until ? storyTime < untilT : storyTime <= untilT)) {
+            next = i + 1;
+            break;
+          }
+        }
+        lastPhase = next;
+        setPhase(next);
+      }
       requestAnimationFrame(() => ScrollTrigger.refresh());
     }, rootRef);
-    return () => ctx.revert();
-  }, [camera, liftRef, monitorTuning, rootRef, sceneReady, setCardFace, setPhase, setStoryProgress, size.height, size.width, spinRef, viewport.aspect, viewport.height, viewport.width]);
+    return () => {
+      polaroidHoldRef.current = false;
+      if (floatGroup) {
+        floatGroup.position.set(POLAROID_EJECT_START[0], POLAROID_EJECT_START[1], POLAROID_EJECT_START[2]);
+      }
+      ctx.revert();
+    };
+  }, [camera, floatRef, liftRef, monitorTuning, rootRef, sceneReady, setCardFace, setMonitorHoldActive, setPhase, setStoryProgress, size.height, size.width, spinRef, viewport.aspect, viewport.height, viewport.width]);
   return null;
 }
 
-function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgress, setCardFace, onMonitorReady, onMonitorScrollControllerChange, monitorTuning, cameraViewActive, monitorFullscreen }) {
+function StoryCanvas({ data, phase, cardFace, rootRef, setPhase, setStoryProgress, setCardFace, setMonitorHoldActive, onMonitorReady, onMonitorScrollControllerChange, monitorTuning, cameraViewActive, monitorFullscreen, holdMonitorCamera, introPhase, onIntroComplete, monitorEdgeHint, monitorHoldActive, heavyPropsEnabled }) {
   const liftRef = useRef();
   const spinRef = useRef();
+  const floatRef = useRef();
   const [sceneReady, setSceneReady] = useState(false);
+  const [floatReady, setFloatReady] = useState(false);
   const ready = useCallback(() => { setSceneReady(true); onMonitorReady?.(); }, [onMonitorReady]);
-  return <Canvas shadows dpr={[1, 2]} camera={{ fov: 43, position: [0, 6.5, 1.25] }} gl={{ antialias: true, powerPreference: "high-performance" }}>
-    <ambientLight intensity={0.8} /><directionalLight castShadow position={[4, 8, 3]} intensity={2.4} shadow-mapSize={[1024, 1024]} /><Environment preset="apartment" />
-    <Wall /><Desk /><BusinessCard liftRef={liftRef} spinRef={spinRef} cardFace={cardFace} data={data} />
-    <Suspense fallback={null}><Monitor onReady={ready} interactive={phase === 3 && !monitorFullscreen} onScrollControllerChange={onMonitorScrollControllerChange} tuning={monitorTuning} screenHidden={monitorFullscreen} /></Suspense>
-    <Letter data={data} /><StoryCameraRig liftRef={liftRef} spinRef={spinRef} rootRef={rootRef} setPhase={setPhase} setStoryProgress={setStoryProgress} setCardFace={setCardFace} sceneReady={sceneReady} monitorTuning={monitorTuning} cameraViewActive={cameraViewActive} />
+  const setFloatNode = useCallback((node) => {
+    floatRef.current = node;
+    if (node) {
+      node.position.set(POLAROID_EJECT_START[0], POLAROID_EJECT_START[1], POLAROID_EJECT_START[2]);
+    }
+    setFloatReady(Boolean(node));
+  }, []);
+  const monitorInteractive = monitorHoldActive && !monitorFullscreen && !introPhase;
+  // Keep the in-monitor site hidden only while the DOM fullscreen portfolio owns the view.
+  // During the intro fade, monitorFullscreen is already false so the 3D screen can crossfade in.
+  // While the monitor Html is live, disable pointer events on the WebGL canvas so it can't
+  // capture clicks meant for links/buttons on the CSS3D screen.
+  return <Canvas shadows dpr={[1, 2]} camera={{ fov: 43, position: [0, 6.5, 1.25] }} gl={{ antialias: true, powerPreference: "high-performance" }} style={monitorInteractive ? { pointerEvents: "none" } : undefined}>
+    <ambientLight intensity={0.8} /><directionalLight castShadow position={[4, 8, 3]} intensity={2.4} shadow-mapSize={[1024, 1024]} />
+    <Suspense fallback={null}><Environment preset="apartment" /></Suspense>
+    <Suspense fallback={null}>
+      <Wall /><Desk /><BusinessCard liftRef={liftRef} spinRef={spinRef} cardFace={cardFace} data={data} />
+      <Letter data={data} />
+    </Suspense>
+    <PolaroidStack floatRef={setFloatNode} enabled={heavyPropsEnabled} />
+    <Suspense fallback={null}><Monitor onReady={ready} interactive={monitorInteractive} onScrollControllerChange={onMonitorScrollControllerChange} tuning={monitorTuning} screenHidden={monitorFullscreen} edgeHint={monitorEdgeHint} /></Suspense>
+    <StoryCameraRig liftRef={liftRef} spinRef={spinRef} floatRef={floatRef} rootRef={rootRef} setPhase={setPhase} setStoryProgress={setStoryProgress} setCardFace={setCardFace} setMonitorHoldActive={setMonitorHoldActive} sceneReady={sceneReady && floatReady} monitorTuning={monitorTuning} cameraViewActive={cameraViewActive} holdMonitorCamera={holdMonitorCamera} introPhase={introPhase} onIntroComplete={onIntroComplete} />
   </Canvas>;
 }
 
@@ -408,83 +1142,296 @@ function StaticPortfolioFallback({ data, reason, onOpenProject }) {
 }
 
 function StoryProgressNav({ phase, progress }) {
-  const chapters = [
-    { label: "Intro", progress: 0 },
-    { label: "Experience", progress: 0.4 },
-    { label: "Projects", progress: 0.71 },
-    { label: "Contact", progress: 0.93 },
-  ];
+  const chapters = STORY_CHAPTERS;
   const railRef = useRef(null);
   const expansionTimerRef = useRef(null);
   const [expandedChapter, setExpandedChapter] = useState(null);
   useEffect(() => () => clearTimeout(expansionTimerRef.current), []);
-  const scrollToProgress = useCallback((progress, behavior = "auto") => {
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    window.scrollTo({ top: Math.max(0, maxScroll * progress), behavior });
-  }, []);
   const handleRailPointer = useCallback((event) => {
     const rail = railRef.current;
     if (!rail) return;
     const rect = rail.getBoundingClientRect();
-    const progress = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
-    scrollToProgress(progress, "auto");
-  }, [scrollToProgress]);
+    const nav = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    scrollToStoryProgress(navProgressToStoryProgress(nav), "auto");
+  }, []);
+  const slots = Math.max(1, chapters.length - 1);
+  // Nearest chapter within slack of the remapped fill — sticks highlight around short locks.
+  let highlightIndex = -1;
+  let highlightDist = Infinity;
+  for (let i = 0; i < chapters.length; i += 1) {
+    const dist = Math.abs(progress - i / slots);
+    if (dist <= LOCK_HIGHLIGHT_SLACK && dist < highlightDist) {
+      highlightDist = dist;
+      highlightIndex = i;
+    }
+  }
+  if (highlightIndex < 0 && phase > 0) highlightIndex = phase - 1;
+  const goToAdjacentChapter = useCallback((direction) => {
+    const currentIndex = highlightIndex >= 0 ? highlightIndex : Math.round(progress * slots);
+    const nextIndex = Math.min(chapters.length - 1, Math.max(0, currentIndex + direction));
+    scrollToStoryLabel(chapters[nextIndex].timelineLabel);
+  }, [chapters, highlightIndex, progress, slots]);
 
-  return <nav style={{ zIndex: 20000000 }} className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2 sm:right-5" aria-label="Story chapters">
-    <div className="relative flex h-[min(52vh,360px)] min-h-56 w-11 flex-col items-center justify-between rounded-full border border-white/10 bg-gradient-to-b from-white/12 via-black/55 to-black/35 py-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] ring-1 ring-[#FF0000]/25 backdrop-blur-xl">
-      <div ref={railRef} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }} className="absolute inset-y-7 left-1/2 w-1 -translate-x-1/2 cursor-ns-resize rounded-full bg-black" role="slider" aria-label="Story progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); scrollToProgress(Math.max(0, (phase - 2) / 3)); } if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); scrollToProgress(Math.min(1, phase / 3)); } }}>
+  return <nav style={{ zIndex: 11 }} className="pointer-events-auto absolute right-3 top-1/2 -translate-y-1/2 sm:right-5" aria-label="Story chapters">
+    <div className="relative flex h-[min(52vh,360px)] min-h-56 w-11 flex-col items-center justify-between rounded-full border border-white/10 bg-gradient-to-b from-white/12 via-black/55 to-black/35 py-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl">
+      <div ref={railRef} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleRailPointer(event); }} className="absolute inset-y-7 left-1/2 w-1 -translate-x-1/2 cursor-ns-resize rounded-full bg-black" role="slider" aria-label="Story progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowLeft") { event.preventDefault(); goToAdjacentChapter(-1); } if (event.key === "ArrowDown" || event.key === "ArrowRight") { event.preventDefault(); goToAdjacentChapter(1); } }}>
         <span className="pointer-events-none absolute left-1/2 top-0 w-1 -translate-x-1/2 rounded-full bg-[#FF0000]" style={{ height: `${progress * 100}%` }} />
       </div>
       {chapters.map((chapter, index) => {
-        const active = phase === index + 1;
-        const completed = phase > index + 1;
+        const slot = index / slots;
+        const active = highlightIndex === index;
+        const completed = !active && progress >= slot;
         const clickExpanded = expandedChapter === index;
-        return <button key={chapter.label} type="button" onClick={() => { setExpandedChapter(index); clearTimeout(expansionTimerRef.current); expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650); scrollToProgress(chapter.progress); }} aria-current={active ? "step" : undefined} className={`group relative z-10 mr-2 flex h-7 w-7 self-end items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 hover:w-32 focus-visible:w-32 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${clickExpanded ? "w-32" : ""} ${active ? "bg-[#FF0000] text-white shadow-[0_0_16px_rgba(255,0,0,0.55)]" : completed ? "bg-black text-white hover:bg-[#FF0000] hover:text-white" : "bg-black/80 text-white hover:bg-[#FF0000] hover:text-white"}`}><span>0{index + 1}</span><span className={`max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 ${clickExpanded ? "ml-2 max-w-20 opacity-100" : ""}`}>{chapter.label}</span></button>;
+        const bubbleTone = active
+          ? "bg-[#FF0000] text-white shadow-[0_0_16px_rgba(255,0,0,0.55)]"
+          : completed
+            ? "bg-[#4a1010] text-[#ffb0b0] ring-1 ring-[#FF0000]/40 hover:bg-[#FF0000] hover:text-white hover:ring-[#FF0000]"
+            : "bg-black/80 text-white hover:bg-[#FF0000] hover:text-white";
+        return <button key={chapter.label} type="button" onClick={() => { setExpandedChapter(index); clearTimeout(expansionTimerRef.current); expansionTimerRef.current = setTimeout(() => setExpandedChapter(null), 650); scrollToStoryLabel(chapter.timelineLabel); }} aria-current={active ? "step" : undefined} className={`group relative z-10 mr-2 flex h-7 w-7 self-end items-center overflow-hidden rounded-full px-2 font-mono text-xs transition-all duration-200 hover:w-32 focus-visible:w-32 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${clickExpanded ? "w-32" : ""} ${bubbleTone}`}><span>0{index + 1}</span><span className={`max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 ${clickExpanded ? "ml-2 max-w-20 opacity-100" : ""}`}>{chapter.label}</span></button>;
       })}
     </div>
   </nav>;
 }
 
-function MonitorFullscreenToggle({ fullscreen, onToggle, hint = false }) {
+function MonitorChromeControls({ fullscreen, onToggleFullscreen, exitHint = false, hint, shortcut }) {
+  // One above the monitor Html zIndexRange max (10) so the control stays clickable over the screen.
+  const label = hint || (fullscreen ? "Desk view" : "Expand site");
+  const key = shortcut || (fullscreen ? "Esc" : "F");
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={fullscreen ? "Exit monitor fullscreen" : "Enter monitor fullscreen"}
-      title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-      className={`pointer-events-auto absolute bottom-4 right-4 z-[100001] flex h-10 w-10 items-center justify-center rounded-md border bg-black/70 text-white shadow-lg backdrop-blur-md transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${
-        hint
-          ? "exit-fullscreen-hint border-[#FF0000]"
-          : "border-white/20 hover:border-[#FF0000] hover:bg-black/85"
-      }`}
+    <div
+      style={{ zIndex: 11 }}
+      className="pointer-events-auto absolute bottom-4 right-4 flex items-center gap-2 pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]"
     >
-      {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-    </button>
+      <div className="group relative">
+        <span
+          className="pointer-events-none absolute right-full top-1/2 mr-3 hidden -translate-y-1/2 whitespace-nowrap border border-white/15 bg-black/90 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[.16em] text-white/75 opacity-0 shadow-lg backdrop-blur-md transition group-hover:opacity-100 group-focus-within:opacity-100 sm:block"
+          aria-hidden="true"
+        >
+          {label}
+          <span className="ml-2 text-[#FF0000]">{key}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          aria-label={`${label} (${key})`}
+          title={`${label} (${key})`}
+          className={`flex h-10 w-10 items-center justify-center rounded-md border bg-black/70 text-white shadow-lg backdrop-blur-md transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000] ${
+            exitHint
+              ? "exit-fullscreen-hint border-[#FF0000]"
+              : "border-white/20 hover:border-[#FF0000] hover:bg-black/85"
+          }`}
+        >
+          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Overscroll prompt when the monitor holds scroll — Space or click to leave. */
+function MonitorEdgeHint({ edge }) {
+  const [side, setSide] = useState(edge);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (edge) {
+      setSide(edge);
+      const id = window.requestAnimationFrame(() => setVisible(true));
+      return () => window.cancelAnimationFrame(id);
+    }
+    setVisible(false);
+    return undefined;
+  }, [edge]);
+
+  useEffect(() => {
+    if (edge || !side) return undefined;
+    const timer = window.setTimeout(() => setSide(null), 220);
+    return () => window.clearTimeout(timer);
+  }, [edge, side]);
+
+  if (!side) return null;
+  const atTop = side === "top";
+  const label = atTop ? "Press Space or click to go back" : "Press Space or click to continue";
+  return (
+    <div
+      className={`pointer-events-none absolute inset-x-0 z-30 flex h-11 items-center justify-center transition-opacity duration-200 ease-out ${
+        atTop
+          ? "top-0 bg-gradient-to-b from-[#FF0000]/30 to-transparent"
+          : "bottom-0 bg-gradient-to-t from-[#FF0000]/30 to-transparent"
+      } ${visible ? "opacity-100" : "opacity-0"}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className={`text-[10px] font-medium tracking-wide text-white/85 ${atTop ? "mt-1 self-start" : "mb-1 self-end"}`}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function ClickMarks({ marks }) {
+  if (!marks.length) return null;
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true">
+      {marks.map((mark) => (
+        <span
+          key={mark.id}
+          className="click-mark"
+          style={{ left: mark.x, top: mark.y }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ExperienceChoiceDialog({ onChoose3d, onChooseStatic }) {
+  return (
+    <div className="pointer-events-auto absolute inset-0 z-[52] flex items-center justify-center bg-black/55 px-5 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="experience-choice-title">
+      <div className="w-full max-w-md border border-white/15 bg-black/90 p-6 text-white shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+        <p className="font-mono text-[10px] uppercase tracking-[.22em] text-white/45">Desktop</p>
+        <h2 id="experience-choice-title" className="mt-3 text-2xl font-semibold tracking-[-.03em]">
+          How do you want to view this site?
+        </h2>
+        <div className="mt-6 grid gap-2.5">
+          <button
+            type="button"
+            onClick={onChoose3d}
+            className="border border-[#FF0000]/70 bg-[#FF0000]/15 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[#FF0000]/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000]"
+          >
+            3D scene
+          </button>
+          <button
+            type="button"
+            onClick={onChooseStatic}
+            className="border border-white/20 bg-white/5 px-4 py-3 text-left text-sm text-white/85 transition hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000]"
+          >
+            Static site
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default function ScrollStory() {
   const { timeline, site, loading, error } = useContent();
   const rootRef = useRef();
+  const overlayRef = useRef(null);
   const lastProjectButton = useRef();
   const monitorScrollControllerRef = useRef(null);
   const lockedScrollYRef = useRef(0);
+  const introStartedRef = useRef(false);
+  // Ignore duplicate Esc / Desk-view while an overlay exit is already animating.
+  const exitInFlightRef = useRef(false);
+  // In-memory only for this page load — hard refresh shows the prompt again.
+  const experiencePref = useRef(null);
+  // True when fullscreen was opened from the 3D monitor beat (not the landing overlay).
+  const openedFromStoryRef = useRef(false);
+  // Crossfade waits until the desk/monitor shell has loaded under the overlay.
+  const pendingIntroRef = useRef(false);
   const [phase, setPhase] = useState(1);
   const [storyProgress, setStoryProgress] = useState(0);
   const [cardFace, setCardFace] = useState("front");
   const [modalProject, setModalProject] = useState(null);
   // Land on the projects-site monitor canvas fullscreen by default.
   const [monitorFullscreen, setMonitorFullscreen] = useState(true);
+  const [showSiteOverlay, setShowSiteOverlay] = useState(true);
+  const [introPhase, setIntroPhase] = useState(null);
+  const [askExperience, setAskExperience] = useState(false);
+  const askExperienceRef = useRef(false);
+  askExperienceRef.current = askExperience;
+  // Mount WebGL only after the static portfolio has had network priority (or on 3D intent).
+  const [sceneEnabled, setSceneEnabled] = useState(false);
+  const [shellReady, setShellReady] = useState(false);
+  // Polaroid + camera GLTFs (~19MB) wait until the scroll story is active.
+  const [heavyPropsEnabled, setHeavyPropsEnabled] = useState(false);
   const [exitHint, setExitHint] = useState(false);
+  const [monitorEdgeHint, setMonitorEdgeHint] = useState(null); // "top" | "bottom" | null
+  // True only during the timeline monitor hold beat (not the letter-approach pan).
+  const [monitorHoldActive, setMonitorHoldActive] = useState(false);
+  // Locked = hold at list edges until Space / click leave.
+  // Desktop: re-arms whenever the monitor hold beat is entered from either direction.
+  const [monitorScrollLocked, setMonitorScrollLocked] = useState(false);
+  const [clickMarks, setClickMarks] = useState([]);
   const exitHintTimerRef = useRef(null);
+  const clickMarkIdRef = useRef(0);
+  const monitorHoldActiveRef = useRef(monitorHoldActive);
+  monitorHoldActiveRef.current = monitorHoldActive;
+  const monitorScrollLockedRef = useRef(monitorScrollLocked);
+  monitorScrollLockedRef.current = monitorScrollLocked;
+  const monitorEdgeHintRef = useRef(monitorEdgeHint);
+  monitorEdgeHintRef.current = monitorEdgeHint;
+  // After landing on the monitor, ignore edge-hint claims until the entry flick dies /
+  // the list controller is ready (hard scrolls were flashing top/bottom hints mid-list).
+  const holdEnterGraceUntilRef = useRef(0);
+  const wheelSoftCapRef = useRef({ lastWheelAt: 0 });
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const isDesktop = useMediaQuery("(hover: hover) and (pointer: fine) and (min-width: 900px)");
+  const isDesktopRef = useRef(isDesktop);
+  isDesktopRef.current = isDesktop;
   const [webgl] = useState(hasWebGL);
   const data = useMemo(() => createStoryData(timeline, site), [timeline, site]);
-  const cameraViewActive = !monitorFullscreen;
+  const inIntro = Boolean(introPhase);
+  const cameraViewActive = !showSiteOverlay && !inIntro;
+  // Pin the 3D camera to the monitor while the DOM portfolio covers it, so reveal never flashes the card.
+  const holdMonitorCamera = showSiteOverlay || introPhase === "pin-monitor";
   const openProject = useCallback((project, trigger) => { lastProjectButton.current = trigger; setModalProject(project); }, []);
   const closeProject = useCallback(() => { setModalProject(null); requestAnimationFrame(() => lastProjectButton.current?.focus()); }, []);
   const setMonitorScrollController = useCallback((controller) => {
     monitorScrollControllerRef.current = controller;
+  }, []);
+
+  // Sync hold/lock refs immediately. Never scrollTo from this path — it runs from
+  // ScrollTrigger onUpdate and was corrupting scrub (slingshot to chapter 1).
+  const onMonitorHoldActiveChange = useCallback((active) => {
+    monitorHoldActiveRef.current = active;
+    if (active) {
+      holdEnterGraceUntilRef.current = performance.now() + 380;
+      monitorEdgeHintRef.current = null;
+      setMonitorEdgeHint(null);
+      if (isDesktopRef.current) {
+        monitorScrollLockedRef.current = true;
+        setMonitorScrollLocked(true);
+      }
+    } else {
+      holdEnterGraceUntilRef.current = 0;
+      monitorEdgeHintRef.current = null;
+      setMonitorEdgeHint(null);
+    }
+    setMonitorHoldActive(active);
+  }, []);
+
+  // Unlock and step just past the hold edge (user gesture — safe to scrollTo here).
+  const leaveMonitorScroll = useCallback((edge) => {
+    monitorEdgeHintRef.current = null;
+    monitorScrollLockedRef.current = false;
+    setMonitorScrollLocked(false);
+    setMonitorEdgeHint(null);
+
+    const epsilon = 0.001;
+    if (edge === "top") {
+      const monitorProgress = storyProgressForLabel("monitor");
+      if (monitorProgress != null) {
+        scrollToStoryProgress(Math.max(0, monitorProgress - epsilon));
+        return;
+      }
+    }
+    const letterApproachProgress = storyProgressForLabel("letter-approach");
+    if (letterApproachProgress != null) {
+      scrollToStoryProgress(Math.min(1, letterApproachProgress + epsilon));
+      return;
+    }
+    window.scrollBy(0, edge === "top" ? -48 : 48);
+  }, []);
+
+  const spawnClickMark = useCallback((clientX, clientY) => {
+    const id = clickMarkIdRef.current + 1;
+    clickMarkIdRef.current = id;
+    // Cursor hotspot is the tip (top-left of the custom arrow) — mark sits on that point.
+    setClickMarks((prev) => [...prev, { id, x: clientX, y: clientY }]);
+    window.setTimeout(() => {
+      setClickMarks((prev) => prev.filter((mark) => mark.id !== id));
+    }, 420);
   }, []);
 
   const flashExitHint = useCallback(() => {
@@ -493,118 +1440,541 @@ export default function ScrollStory() {
     exitHintTimerRef.current = setTimeout(() => setExitHint(false), 650);
   }, []);
 
-  useEffect(() => () => clearTimeout(exitHintTimerRef.current), []);
+  useEffect(() => () => {
+    clearTimeout(exitHintTimerRef.current);
+    if (overlayRef.current) gsap.killTweensOf(overlayRef.current);
+  }, []);
 
-  const exitMonitorFullscreen = useCallback(() => {
-    // Leave the projects canvas and jump to the top of the scroll story.
-    lockedScrollYRef.current = 0;
+  // Ask desktop visitors once per page load (in-memory).
+  useEffect(() => {
+    if (reducedMotion || !webgl) return undefined;
+    if (experiencePref.current === "static" || experiencePref.current === "3d") {
+      setAskExperience(false);
+      return undefined;
+    }
+    if (isDesktop) setAskExperience(true);
+    return undefined;
+  }, [isDesktop, reducedMotion, webgl]);
+
+  const onIntroComplete = useCallback(() => {
+    introStartedRef.current = false;
+    exitInFlightRef.current = false;
+    monitorHoldActiveRef.current = false;
+    setMonitorHoldActive(false);
+    setMonitorScrollLocked(false);
+    setMonitorEdgeHint(null);
+    setIntroPhase(null);
+    setPhase(1);
+    setStoryProgress(0);
+    setCardFace("front");
+  }, []);
+
+  // Fade the DOM portfolio out over the live 3D canvas (monitor already framed underneath).
+  const crossfadeOverlayOut = useCallback((onComplete) => {
+    const overlay = overlayRef.current;
+    if (overlay) gsap.killTweensOf(overlay);
+    // Reveal the in-scene monitor UI under the fading fullscreen portfolio.
     setMonitorFullscreen(false);
-    setExitHint(false);
-  }, []);
 
-  const enterMonitorFullscreen = useCallback(() => {
-    lockedScrollYRef.current = window.scrollY;
-    setMonitorFullscreen(true);
-  }, []);
-
-  const toggleMonitorFullscreen = useCallback(() => {
-    setMonitorFullscreen((current) => {
-      if (current) {
-        lockedScrollYRef.current = 0;
-        setExitHint(false);
-        return false;
+    requestAnimationFrame(() => {
+      if (!overlay) {
+        onComplete();
+        return;
       }
-      lockedScrollYRef.current = window.scrollY;
-      return true;
+      overlay.style.pointerEvents = "none";
+      gsap.to(overlay, {
+        opacity: 0,
+        duration: INTRO_CROSSFADE_DURATION,
+        ease: "power2.inOut",
+        onComplete,
+      });
     });
   }, []);
 
-  // Freeze page scroll + ScrollTrigger scrubbing while the original site fills the viewport.
+  const runIntroCrossfade = useCallback(() => {
+    crossfadeOverlayOut(() => {
+      setShowSiteOverlay(false);
+      setIntroPhase("zoom-out");
+    });
+  }, [crossfadeOverlayOut]);
+
+  const handleMonitorReady = useCallback(() => {
+    setShellReady(true);
+    ScrollTrigger.refresh();
+    if (pendingIntroRef.current) {
+      pendingIntroRef.current = false;
+      runIntroCrossfade();
+    }
+  }, [runIntroCrossfade]);
+
+  // Let the static portfolio claim bandwidth first, then warm the desk/monitor shell.
   useEffect(() => {
-    if (!monitorFullscreen) return undefined;
+    if (reducedMotion || !webgl) return undefined;
+    if (!showSiteOverlay) return undefined;
+    const warm = () => {
+      if (experiencePref.current === "static") return;
+      setSceneEnabled(true);
+    };
+    let idleId;
+    let timeoutId;
+    if (typeof requestIdleCallback === "function") {
+      idleId = requestIdleCallback(warm, { timeout: 2200 });
+    } else {
+      timeoutId = window.setTimeout(warm, 1400);
+    }
+    return () => {
+      if (idleId != null) window.cancelIdleCallback?.(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [reducedMotion, showSiteOverlay, webgl]);
+
+  // Camera + polaroid (~19MB) only after the user is in the scroll story.
+  useEffect(() => {
+    if (!sceneEnabled || !shellReady) return undefined;
+    if (showSiteOverlay || introPhase) return undefined;
+    const enableHeavy = () => setHeavyPropsEnabled(true);
+    let idleId;
+    let timeoutId;
+    if (typeof requestIdleCallback === "function") {
+      idleId = requestIdleCallback(enableHeavy, { timeout: 1200 });
+    } else {
+      timeoutId = window.setTimeout(enableHeavy, 400);
+    }
+    return () => {
+      if (idleId != null) window.cancelIdleCallback?.(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [introPhase, sceneEnabled, shellReady, showSiteOverlay]);
+
+  // Pin monitor under the DOM portfolio, crossfade the overlay away, then pan to card 1.
+  const beginExperienceIntro = useCallback(() => {
+    if (introStartedRef.current) return;
+    introStartedRef.current = true;
+    exitInFlightRef.current = true;
+    openedFromStoryRef.current = false;
+    monitorHoldActiveRef.current = false;
+    setMonitorHoldActive(false);
+    setMonitorScrollLocked(false);
+    setMonitorEdgeHint(null);
+    setAskExperience(false);
+    setExitHint(false);
+    lockedScrollYRef.current = 0;
+    setPhase(1);
+    setStoryProgress(0);
+    setCardFace("front");
+    setIntroPhase("pin-monitor");
+    setSceneEnabled(true);
+
+    if (shellReady) {
+      runIntroCrossfade();
+    } else {
+      pendingIntroRef.current = true;
+    }
+  }, [runIntroCrossfade, shellReady]);
+
+  const choose3d = useCallback(() => {
+    experiencePref.current = "3d";
+    askExperienceRef.current = false;
+    setAskExperience(false);
+    beginExperienceIntro();
+  }, [beginExperienceIntro]);
+
+  const chooseStatic = useCallback(() => {
+    experiencePref.current = "static";
+    askExperienceRef.current = false;
+    setAskExperience(false);
+    pendingIntroRef.current = false;
+    setSceneEnabled(false);
+    setShellReady(false);
+    setHeavyPropsEnabled(false);
+  }, []);
+
+  // Crossfade back to the 3D monitor framing the user came from (no chapter-1 intro).
+  const restoreStoryFullscreenExit = useCallback(() => {
+    setExitHint(false);
+    askExperienceRef.current = false;
+    setAskExperience(false);
+    window.scrollTo(0, lockedScrollYRef.current);
+    setSceneEnabled(true);
+
+    crossfadeOverlayOut(() => {
+      setShowSiteOverlay(false);
+      exitInFlightRef.current = false;
+      const storyTrigger = getStoryScrollTrigger();
+      storyTrigger?.enable(true);
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+        ScrollTrigger.update();
+        storyTrigger?.getTween()?.progress(1);
+      });
+    });
+  }, [crossfadeOverlayOut]);
+
+  const exitMonitorFullscreen = useCallback(() => {
+    // Prompt still open — Esc means static, never the 3D intro.
+    if (askExperienceRef.current) {
+      chooseStatic();
+      return;
+    }
+    // Double Esc / Desk-view during the crossfade must not start the card intro
+    // after a monitor restore already cleared openedFromStoryRef.
+    if (exitInFlightRef.current || introStartedRef.current) return;
+
+    exitInFlightRef.current = true;
+    // Returning from the static fullscreen site → unlocked so scroll can leave the monitor.
+    monitorScrollLockedRef.current = false;
+    setMonitorScrollLocked(false);
+    setMonitorEdgeHint(null);
+    // Opened from the 3D story → crossfade back to the current monitor beat.
+    if (openedFromStoryRef.current) {
+      openedFromStoryRef.current = false;
+      restoreStoryFullscreenExit();
+      return;
+    }
+    // Landing / first exit after a decision → crossfade then pan to card 1.
+    if (!experiencePref.current) experiencePref.current = "3d";
+    beginExperienceIntro();
+  }, [beginExperienceIntro, chooseStatic, restoreStoryFullscreenExit]);
+
+  const enterMonitorFullscreen = useCallback(() => {
+    exitInFlightRef.current = false;
+    openedFromStoryRef.current = true;
+    lockedScrollYRef.current = window.scrollY;
+    setShowSiteOverlay(true);
+    setMonitorFullscreen(true);
+    askExperienceRef.current = false;
+    setAskExperience(false);
+    requestAnimationFrame(() => {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      gsap.killTweensOf(overlay);
+      overlay.style.pointerEvents = "auto";
+      gsap.set(overlay, { opacity: 1 });
+    });
+  }, []);
+
+  // Freeze page scroll + ScrollTrigger while the overlay or intro owns the view.
+  // Do not pin body with position:fixed — that unsticks/replaces the viewport canvas
+  // and flashes a second non-interactive story frame at document top.
+  useEffect(() => {
+    if (!showSiteOverlay && !inIntro) return undefined;
     const storyTrigger = ScrollTrigger.getById("portfolio-story");
     storyTrigger?.disable(false);
-    const previousOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = "hidden";
+    const html = document.documentElement;
+    const body = document.body;
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+      bodyOverscroll: body.style.overscrollBehavior,
+      scrollY: lockedScrollYRef.current,
+    };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
     const lockScroll = () => {
       if (window.scrollY !== lockedScrollYRef.current) {
         window.scrollTo(0, lockedScrollYRef.current);
       }
     };
     const blockPageWheel = (event) => {
+      if (inIntro) {
+        event.preventDefault();
+        return;
+      }
+      if (!event.target?.closest?.("[data-monitor-fullscreen]")) {
+        event.preventDefault();
+      }
+    };
+    const blockTouchScroll = (event) => {
+      if (inIntro) {
+        event.preventDefault();
+        return;
+      }
       if (!event.target?.closest?.("[data-monitor-fullscreen]")) {
         event.preventDefault();
       }
     };
     window.addEventListener("scroll", lockScroll, { passive: false });
     window.addEventListener("wheel", blockPageWheel, { passive: false, capture: true });
+    window.addEventListener("touchmove", blockTouchScroll, { passive: false, capture: true });
     return () => {
       window.removeEventListener("scroll", lockScroll);
       window.removeEventListener("wheel", blockPageWheel, { capture: true });
-      document.documentElement.style.overflow = previousOverflow;
-      storyTrigger?.enable(false);
-      window.scrollTo(0, lockedScrollYRef.current);
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      window.removeEventListener("touchmove", blockTouchScroll, { capture: true });
+      html.style.overflow = previous.htmlOverflow;
+      body.style.overflow = previous.bodyOverflow;
+      html.style.overscrollBehavior = previous.htmlOverscroll;
+      body.style.overscrollBehavior = previous.bodyOverscroll;
+      window.scrollTo(0, previous.scrollY);
+      // ScrollTrigger is re-enabled by intro completion or restoreStoryFullscreenExit.
     };
-  }, [monitorFullscreen]);
+  }, [inIntro, showSiteOverlay]);
 
+  // Single Esc path: while the prompt is up → static; after a decision → leave fullscreen / enter 3D.
+  // Nested project modals own Escape — only exit the site overlay when none are open.
   useEffect(() => {
-    if (!monitorFullscreen) return undefined;
+    if (!showSiteOverlay || inIntro) return undefined;
     const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        exitMonitorFullscreen();
+      if (event.key !== "Escape") return;
+      if (document.querySelector("[data-project-modal]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (askExperienceRef.current) {
+        chooseStatic();
+        return;
       }
+      exitMonitorFullscreen();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [chooseStatic, exitMonitorFullscreen, inIntro, showSiteOverlay]);
+
+  // F expands the in-scene monitor into the fullscreen site.
+  useEffect(() => {
+    if (showSiteOverlay || inIntro || !monitorHoldActive) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "f" && event.key !== "F") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.repeat) return;
+      if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      enterMonitorFullscreen();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [exitMonitorFullscreen, monitorFullscreen]);
+  }, [enterMonitorFullscreen, inIntro, monitorHoldActive, showSiteOverlay]);
 
+  // Space or click leaves the monitor hold once an edge prompt is showing.
   useEffect(() => {
-    const routeWheelToMonitor = (event) => {
-      if (monitorFullscreen || phase !== 3 || event.defaultPrevented) return;
-      const consumed = monitorScrollControllerRef.current?.(event.deltaY, event.deltaMode);
-      if (!consumed) return;
+    if (!isDesktop || showSiteOverlay || inIntro || !monitorHoldActive || !monitorScrollLocked) return undefined;
+
+    const canLeave = () => Boolean(monitorEdgeHintRef.current);
+
+    const onKeyDown = (event) => {
+      if (event.code !== "Space" && event.key !== " ") return;
+      if (event.repeat) return;
+      if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      if (!canLeave()) return;
       event.preventDefault();
-      event.stopPropagation();
+      leaveMonitorScroll(monitorEdgeHintRef.current);
     };
-    window.addEventListener("wheel", routeWheelToMonitor, { passive: false });
-    return () => window.removeEventListener("wheel", routeWheelToMonitor);
-  }, [monitorFullscreen, phase]);
+
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      if (!canLeave()) return;
+      if (event.target?.closest?.("a, button, input, textarea, select, label, [role='button'], [role='slider']")) return;
+      leaveMonitorScroll(monitorEdgeHintRef.current);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [inIntro, isDesktop, leaveMonitorScroll, monitorHoldActive, monitorScrollLocked, showSiteOverlay]);
+
+  // Every primary press gets a small mark at the cursor tip (hotspot).
+  useEffect(() => {
+    if (!isDesktop) return undefined;
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      spawnClickMark(event.clientX, event.clientY);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [isDesktop, spawnClickMark]);
+
+  // Soft-cap story scrub. On the monitor hold: list scroll; at edges, Space/click prompt.
+  // Crossing into the hold clamps onto the near edge (user-gesture scrollTo only — never
+  // from ScrollTrigger onUpdate, which was slingshotting the camera to chapter 1).
+  useEffect(() => {
+    if (showSiteOverlay || inIntro || !isDesktop) return undefined;
+
+    const softCap = wheelSoftCapRef.current;
+
+    const normalizeDelta = (event) => {
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      return event.deltaY * scale;
+    };
+
+    const applyCappedStoryScroll = (event, rawDelta) => {
+      const now = performance.now();
+      const dt = softCap.lastWheelAt ? Math.min(48, Math.max(8, now - softCap.lastWheelAt)) : 16;
+      softCap.lastWheelAt = now;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const raw = rawDelta ?? normalizeDelta(event);
+      if (!raw) return;
+      const step = Math.sign(raw) * Math.min(Math.abs(raw), STORY_WHEEL_MAX_DELTA, STORY_WHEEL_MAX_SPEED * dt);
+
+      if (!monitorHoldActiveRef.current) {
+        const trigger = getStoryScrollTrigger();
+        const monitorP = storyProgressForLabel("monitor");
+        const letterP = storyProgressForLabel("letter-approach");
+        if (trigger && monitorP != null && letterP != null) {
+          const span = trigger.end - trigger.start;
+          const current = trigger.progress;
+          const next = current + (span > 0 ? step / span : 0);
+          // From below (3→4): land just inside the hold start.
+          if (step > 0 && current < monitorP && next >= monitorP) {
+            holdEnterGraceUntilRef.current = performance.now() + 380;
+            scrollToStoryProgress(Math.min(letterP - 0.0005, monitorP + 0.001));
+            return;
+          }
+          // From above (5→4): land just inside the hold end.
+          if (step < 0 && current >= letterP && next < letterP) {
+            holdEnterGraceUntilRef.current = performance.now() + 380;
+            scrollToStoryProgress(Math.max(monitorP + 0.0005, letterP - 0.001));
+            return;
+          }
+        }
+      }
+
+      window.scrollBy(0, step);
+    };
+
+    const onWheel = (event) => {
+      if (!monitorHoldActiveRef.current) {
+        setMonitorEdgeHint((prev) => (prev == null ? prev : null));
+        applyCappedStoryScroll(event);
+        return;
+      }
+
+      const raw = normalizeDelta(event);
+      const dir = Math.sign(raw) || Math.sign(event.deltaY);
+      if (!dir) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      const controller = monitorScrollControllerRef.current;
+      // List controller mounts a frame after hold becomes interactive — absorb
+      // leftover entry-flick deltas without pretending we're at an edge.
+      if (!controller) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      const consumed = controller(event.deltaY, event.deltaMode);
+      if (consumed) {
+        setMonitorEdgeHint((prev) => (prev == null ? prev : null));
+        softCap.lastWheelAt = performance.now();
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      // At list edge while locked — prompt and absorb until Space / click.
+      if (monitorScrollLockedRef.current) {
+        // Still coasting from the 3→4 / 5→4 flick — don't flash the leave hint.
+        if (performance.now() < holdEnterGraceUntilRef.current) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        const edge = dir < 0 ? "top" : "bottom";
+        if (monitorEdgeHintRef.current !== edge) {
+          monitorEdgeHintRef.current = edge;
+          setMonitorEdgeHint(edge);
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      setMonitorEdgeHint((prev) => (prev == null ? prev : null));
+      applyCappedStoryScroll(event, raw);
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("wheel", onWheel, { capture: true });
+      setMonitorEdgeHint(null);
+    };
+  }, [inIntro, isDesktop, showSiteOverlay]);
+
+  // Clear edge UI when leaving the hold beat (lock re-arm is handled sync in onMonitorHoldActiveChange).
+  useEffect(() => {
+    if (monitorHoldActive) return;
+    setMonitorEdgeHint(null);
+  }, [monitorHoldActive]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">Loading portfolio…</div>;
   if (reducedMotion || !webgl) return <><StaticPortfolioFallback data={data} reason={reducedMotion ? "Reduced-motion view enabled." : "Interactive 3D is unavailable in this browser."} onOpenProject={openProject} /><ProjectModal project={modalProject} isOpen={Boolean(modalProject)} onClose={closeProject} /></>;
+  // Track height alone drives scrub length. The WebGL layer stays position:fixed so
+  // scroll lock / overlay / intro never swap in a second canvas at document top.
+  const storyChromeVisible = !showSiteOverlay && !inIntro;
+  // Remap scrub progress onto evenly spaced chapter dots so lock holds park on the
+  // circle and journeys fill the line between them (no overshoot past the next lock).
+  const navProgress = storyProgressToNavProgress(storyProgress);
   return <main ref={rootRef} className="scroll-story relative h-[500vh] bg-black [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div className="sticky top-0 h-screen overflow-hidden">
-      <StoryCanvas
-        data={data}
-        phase={phase}
-        cardFace={cardFace}
-        rootRef={rootRef}
-        setPhase={setPhase}
-        setStoryProgress={setStoryProgress}
-        setCardFace={setCardFace}
-        onMonitorReady={() => ScrollTrigger.refresh()}
-        onMonitorScrollControllerChange={setMonitorScrollController}
-        monitorTuning={DEFAULT_MONITOR_TUNING}
-        cameraViewActive={cameraViewActive}
-        monitorFullscreen={monitorFullscreen}
-      />
-      {!monitorFullscreen && <StoryProgressNav phase={phase} progress={storyProgress} />}
-      {!monitorFullscreen && <p className="pointer-events-none absolute bottom-5 left-5 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">Scroll to explore</p>}
-      {!monitorFullscreen && error && <p className="pointer-events-none absolute bottom-5 right-5 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
-      {!monitorFullscreen && <p className="pointer-events-none absolute bottom-5 right-5 translate-y-6 text-[9px] text-white/40">Monitor model: portgl16 · CC BY 4.0</p>}
-      {(phase === 3 && !monitorFullscreen) && (
-        <MonitorFullscreenToggle fullscreen={false} onToggle={enterMonitorFullscreen} />
+    <div className="fixed inset-0 z-0 h-dvh overflow-hidden">
+      {sceneEnabled && (
+        <StoryCanvas
+          data={data}
+          phase={phase}
+          cardFace={cardFace}
+          rootRef={rootRef}
+          setPhase={setPhase}
+          setStoryProgress={setStoryProgress}
+          setCardFace={setCardFace}
+          setMonitorHoldActive={onMonitorHoldActiveChange}
+          onMonitorReady={handleMonitorReady}
+          onMonitorScrollControllerChange={setMonitorScrollController}
+          monitorTuning={DEFAULT_MONITOR_TUNING}
+          cameraViewActive={cameraViewActive}
+          monitorFullscreen={monitorFullscreen}
+          holdMonitorCamera={holdMonitorCamera}
+          introPhase={introPhase}
+          onIntroComplete={onIntroComplete}
+          monitorEdgeHint={monitorEdgeHint}
+          monitorHoldActive={monitorHoldActive}
+          heavyPropsEnabled={heavyPropsEnabled}
+        />
+      )}
+      {storyChromeVisible && <StoryProgressNav phase={phase} progress={navProgress} />}
+      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 left-5 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">Scroll to explore</p>}
+      {storyChromeVisible && error && <p className="pointer-events-none absolute bottom-5 right-5 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
+      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 right-5 translate-y-6 text-[9px] text-white/40">Monitor: portgl16 · Polaroid: edoardogalati · Camera: Boxroom_3D · CC BY 4.0</p>}
+      {(monitorHoldActive && storyChromeVisible) && (
+        <MonitorChromeControls
+          fullscreen={false}
+          onToggleFullscreen={enterMonitorFullscreen}
+          hint="Expand site"
+          shortcut="F"
+        />
       )}
     </div>
-    {monitorFullscreen && (
-      <div data-monitor-fullscreen className="pointer-events-auto fixed inset-0 z-[100000] bg-black" role="dialog" aria-modal="true" aria-label="Projects site">
+    {showSiteOverlay && (
+      <div ref={overlayRef} data-monitor-fullscreen className="pointer-events-auto fixed inset-0 z-50 h-dvh bg-black" role="dialog" aria-modal="true" aria-label="Projects site">
         <Portfolio mode="fullscreen" className="h-full" onBottomOverscroll={flashExitHint} />
-        <MonitorFullscreenToggle fullscreen hint={exitHint} onToggle={exitMonitorFullscreen} />
+        {!askExperience && (
+          <MonitorChromeControls
+            fullscreen
+            onToggleFullscreen={exitMonitorFullscreen}
+            exitHint={exitHint}
+            shortcut="Esc"
+          />
+        )}
+        {askExperience && <ExperienceChoiceDialog onChoose3d={choose3d} onChooseStatic={chooseStatic} />}
+        {introPhase === "pin-monitor" && !shellReady && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-10 z-[60] flex justify-center">
+            <p className="rounded bg-black/80 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/80">
+              Loading 3D scene…
+            </p>
+          </div>
+        )}
       </div>
     )}
-    {STORY_CHAPTER_PROGRESS.map((progress, index) => <span key={progress} id={["story-card", "story-experience", "story-projects", "story-letter"][index]} aria-hidden="true" className="pointer-events-none absolute left-0 h-px w-px" style={{ top: `${progress * 400}vh` }} />)}
-    {["card-overhead", "timeline-read", "monitor", "letter"].map((chapter, index) => <section key={chapter} className="h-screen" aria-label={`Story chapter ${index + 1}: ${chapter}`} />)}
+    <ClickMarks marks={clickMarks} />
+    {STORY_CHAPTERS.map((chapter) => <span key={chapter.id} id={chapter.id} aria-hidden="true" className="pointer-events-none absolute left-0 h-px w-px" style={{ top: `${chapter.markerProgress * 500}vh` }} />)}
+    {STORY_CHAPTERS.map((chapter, index) => (
+      <section key={chapter.timelineLabel} className="sr-only" aria-label={`Story chapter ${index + 1}: ${chapter.timelineLabel}`} />
+    ))}
   </main>;
 }

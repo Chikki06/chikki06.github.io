@@ -11,56 +11,12 @@
     {
       "id": "linkedin",
       "label": "LinkedIn",
-      "url": "https://www.linkedin.com/in/akshat-shahi-651684217/"
+      "url": "https://www.linkedin.com/in/akshat-kumar-shahi/"
     },
     {
       "id": "github",
       "label": "GitHub",
       "url": "https://github.com/Chikki06"
     }
-  ],
-  "skills": {
-    "languages": [
-      "Python",
-      "C++",
-      "C",
-      "TypeScript",
-      "JavaScript",
-      "Java",
-      "Rust",
-      "SQL"
-    ],
-    "mlAi": [
-      "PyTorch",
-      "TensorFlow",
-      "ONNX",
-      "TensorRT",
-      "Computer Vision",
-      "Deep Learning"
-    ],
-    "toolsPlatforms": [
-      "Flask",
-      "Firebase",
-      "React",
-      "Docker",
-      "Linux",
-      "AWS",
-      "Azure",
-      "Git"
-    ],
-    "spokenLanguages": [
-      {
-        "name": "English",
-        "level": "Fluent"
-      },
-      {
-        "name": "Hindi",
-        "level": "Fluent"
-      },
-      {
-        "name": "German",
-        "level": "Professional"
-      }
-    ]
-  }
+  ]
 }

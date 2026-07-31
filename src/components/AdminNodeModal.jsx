@@ -441,8 +441,8 @@ export default function AdminNodeModal({
               Advanced JSON
             </div>
             <p className="mb-2 text-[11px] text-neutral-500">
-              Edit the full node JSON for precise control (including overview,
-              architectureSections, impact, etc.). Paste valid JSON and click
+              Edit the full node JSON for precise control (features, demo,
+              detail for career modals, links, etc.). Paste valid JSON and click
               &quot;Apply JSON&quot; to sync the form.
             </p>
             <textarea
