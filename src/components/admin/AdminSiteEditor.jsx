@@ -112,6 +112,7 @@ function SocialList({ socials, onChange }) {
 export default function AdminSiteEditor({ site, onChange }) {
   const hero = site?.hero || {};
   const contact = site?.contact || {};
+  const skills = site?.skills || {};
 
   const updateHeroField = (field, value) => {
     onChange({
@@ -128,6 +129,16 @@ export default function AdminSiteEditor({ site, onChange }) {
       ...site,
       contact: {
         ...contact,
+        [field]: value,
+      },
+    });
+  };
+
+  const updateSkillsField = (field, value) => {
+    onChange({
+      ...site,
+      skills: {
+        ...skills,
         [field]: value,
       },
     });
@@ -185,6 +196,22 @@ export default function AdminSiteEditor({ site, onChange }) {
         />
 
         <SocialList socials={site?.socials || []} onChange={updateSocials} />
+
+        <h3 className="mt-4 text-xs font-mono uppercase tracking-[0.16em] text-neutral-400">
+          Technical skills
+        </h3>
+        <TextInput
+          label="Languages"
+          value={skills.languages}
+          onChange={(v) => updateSkillsField("languages", v)}
+          placeholder="Python, C++, …"
+        />
+        <TextInput
+          label="Technologies"
+          value={skills.technologies}
+          onChange={(v) => updateSkillsField("technologies", v)}
+          placeholder="PyTorch, Docker, …"
+        />
       </section>
 
       <section className="mt-6 border-t border-neutral-900 pt-4">

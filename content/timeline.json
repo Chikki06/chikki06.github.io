@@ -10,12 +10,12 @@
     "summary": "GPA: 3.86 (Dean's List).",
     "cardLines": [
       "GPA 3.86 · Dean's List",
-      "Distributed Sys, ML Sys, Algorithms, HFT Technology, Sys Programming",
+      "ML Sys, Distributed Sys, Algorithms, HFT Technology, Sys Programming",
       "Data Structures, Abstract Linear Algebra, Computer Vision, Computer Architecture"
     ],
     "bullets": [
-      "Distributed Sys (Go), ML Sys, Algorithms, HFT Technology (C++), Sys Programming (C)",
-      "Data Structures (C++), Abstract Linear Algebra, Computer Vision (Python), Computer Architecture"
+      "Coursework: ML Sys, Distributed Sys, Algorithms, HFT Technology (C++), Sys Programming (C), Data Structures (C++), Abstract Linear Algebra, Computer Vision (Python), Computer Architecture",
+      "SP27: Advanced Performance Engineering, Compilers, Applied Parallel Programming (C++), Computer Sys Organization"
     ],
     "tags": ["computer-science", "mathematics", "uiuc"]
   },
@@ -27,31 +27,40 @@
     "title": "Undergraduate Research Assistant (AI and Data subgroups)",
     "organization": "Chemical Imaging and Structures Laboratory, UIUC",
     "location": "Urbana, IL",
-    "summary": "IR→H&E virtual staining research plus an end-to-end inference platform for partner labs and clinics.",
+    "summary": "FP16 TensorRT inference, edge deployment platform, and remote GPU transfer tooling for IR→H&E virtual staining.",
     "cardLines": [
-      "IR→H&E virtual staining research and a production inference platform for partner labs.",
-      "CISLNet ablations + 45% TensorRT speed-up; multi-modal viewer with async job queueing.",
-      "Docker/GHCR packaging; featured at the CCIL booth at AACR 2026."
+      "FP16-native PyTorch/TensorRT pipeline with a custom CUDA CBAM plugin (77% speedup).",
+      "Containerized Flask/SQLite/Docker platform for edge inference and analysis (−99% end-to-end time).",
+      "Peer-to-peer TCP transfers to remote GPU clusters (10×); presented at AACR 2026."
     ],
     "bullets": [
-      "Ablations on CISLNet vs SwinGAN, Restormer, and VQGAN; 45% inference speed-up via FP16 TensorRT quantization.",
-      "End-to-end inference web app with multi-modal viewer, annotations, SQLite metadata, and async job queueing (~99% faster than the prior pipeline).",
-      "Containerized with Docker/GHCR; presented at campus symposia and featured at the CCIL booth at AACR 2026."
+      "Engineered an FP16-native inference pipeline in PyTorch and TensorRT, achieving a 77% speedup via op-fusion, optimized host-to-device transfers, and a custom CUDA CBAM plugin.",
+      "Deployed a containerized (Flask, SQLite, Docker) unified web platform enabling edge inference, visualization, and analysis — replacing manual scripts and cutting end-to-end time by 99%.",
+      "Accelerated large file transfers to remote GPU clusters by 10× with a peer-to-peer TCP socket application, bypassing high-latency SMB network drives.",
+      "Optimizations and platform presented at campus symposia and AACR 2026."
     ],
     "demo": {
       "src": "/assets/remotegpu.webm",
-      "href": "https://youtu.be/V6QrnFpiEwM",
+      "href": "https://www.youtube.com/watch?v=V6QrnFpiEwM",
       "label": "Demo"
     },
     "hasDetails": true,
     "detail": {
       "title": "CISL Inference Platform",
       "subtitle": "Chemical Imaging and Structures Laboratory · Beckman Institute",
-      "shortDescription": "Research + production pipeline for IR to H&E virtual staining: model work, accelerated inference, and a deployable web platform.",
+      "shortDescription": "Research + production pipeline for IR to H&E virtual staining: accelerated inference, edge deployment, and remote GPU transfer tooling.",
       "links": [
         {
           "label": "Live Platform",
           "url": "https://cisl-inference.beckman.illinois.edu/"
+        },
+        {
+          "label": "Inference Demo",
+          "url": "https://www.youtube.com/watch?v=wMGiFxNXJyw"
+        },
+        {
+          "label": "Transfer Demo",
+          "url": "https://www.youtube.com/watch?v=V6QrnFpiEwM"
         },
         {
           "label": "Poster",
@@ -60,38 +69,33 @@
       ],
       "features": [
         {
-          "title": "Model research",
-          "description": "Extensive ablations on CISLNet for IR→H&E virtual staining, benchmarked against SwinGAN, Restormer, and VQGAN."
+          "title": "FP16 TensorRT pipeline",
+          "description": "FP16-native inference in PyTorch and TensorRT with op-fusion, optimized host-to-device transfers, and a custom CUDA CBAM plugin — 77% speedup."
         },
         {
-          "title": "Accelerated inference",
-          "description": "45% speed-up with fidelity-preserving FP16 quantization in PyTorch and TensorRT, with a path toward near-lossless INT8/INT4."
+          "title": "Edge inference platform",
+          "description": "Containerized Flask/SQLite/Docker web platform for edge inference, visualization, and analysis; replaces manual scripts and cuts end-to-end time by 99%."
         },
         {
-          "title": "Multi-modal viewer",
-          "description": "Browser viewer for large tissue outputs with shareable annotations and SQLite-backed sample metadata, replacing manual scripts and hand-offs."
+          "title": "Remote GPU transfers",
+          "description": "Peer-to-peer TCP socket application that accelerates large file transfers to remote GPU clusters by 10× versus high-latency SMB drives."
         },
         {
-          "title": "Unified async backend",
-          "description": "One platform for filesystem exploration, dataset generation, format conversion, and inference queueing: ~99% faster end-to-end than the prior pipeline."
-        },
-        {
-          "title": "Deployable packaging",
-          "description": "Docker + GHCR distribution for partner labs and clinics using CISL imaging instruments. Featured at the CCIL booth at AACR 2026."
+          "title": "Symposia & AACR 2026",
+          "description": "Optimizations and platform presented at campus symposia and AACR 2026."
         }
       ],
       "technologies": [
         "PyTorch",
         "TensorRT",
+        "CUDA",
         "Flask",
-        "React",
         "SQLite",
-        "Docker",
-        "GHCR"
+        "Docker"
       ],
       "demo": {
         "src": "/assets/remotegpu.webm",
-        "href": "https://youtu.be/V6QrnFpiEwM",
+        "href": "https://www.youtube.com/watch?v=V6QrnFpiEwM",
         "label": "Full demo on YouTube"
       }
     },
@@ -108,43 +112,42 @@
     "project": {
       "id": "etf-pipeline",
       "title": "ETF Data Pipeline",
-      "subtitle": "IE 421 HFT · Group Lead",
-      "shortDescription": "Holdings database and zero-copy exchange parsers that turn ETF constitutions plus raw PCAPs into Strategy Studio-ready L2 books for cash-vs-futures backtesting.",
+      "subtitle": "Group Lead · IE 421 HFT",
+      "shortDescription": "Directed a 4-person team building holdings scrapers and zero-copy CME/NASDAQ parsers for Strategy Studio-ready L2 books.",
       "hasDetails": true,
       "links": [
         {
           "label": "Repo",
-          "url": "https://gitlab.engr.illinois.edu/ie421_high_frequency_trading_spring_2026/ie421_hft_spring_2026_group_02/group_02_project/"
+          "url": "https://github.com/Chikki06/etf-holding-pipeline"
         }
       ],
       "tags": ["C++", "Python", "ArcticDB", "CME", "NASDAQ"],
       "features": [
         {
-          "title": "Adaptive holdings scrape",
-          "description": "Bloomberg BQL + iShares scrapers with liquidity triage and binary-search sampling; ~100GB of historical constituents into ArcticDB across thousands of ETFs."
+          "title": "Team-led pipeline",
+          "description": "Directed a 4-person team to architect an end-to-end C++/Python pipeline processing 100GB+ of historical exchange market data for quantitative trading backtesting."
         },
         {
-          "title": "L2 order-book parsers",
-          "description": "Zero-copy C++ CME MDP 3.0 and NASDAQ ITCH 5.0 pipelines (on-the-fly ZSTD, static buffers): ~2.4 s/GB CME, ~239× faster than the Python reference on NASDAQ."
+          "title": "Holdings → ArcticDB",
+          "description": "Scrapers using issuer sites and Bloomberg APIs extract 10 years of ETF constituent records into ArcticDB, with HHI metrics on a real-time analytics dashboard."
         },
         {
-          "title": "Backtest-ready outputs",
-          "description": "P-tick / T-trade CSVs matching Strategy Studio schema, plus an ArcticDB dashboard for coverage, HHI, and snapshot deltas."
+          "title": "Zero-copy parsers",
+          "description": "CME Globex and NASDAQ ITCH parsers with on-the-fly ZSTD decompression and static buffers: 2.4 sec/GB order-book reconstruction (239× faster than Python)."
         }
       ],
       "technologies": [
         "C++",
         "Python",
-        "Polars",
         "ArcticDB",
         "ZSTD",
         "CME Globex",
         "NASDAQ ITCH",
-        "libpcap"
+        "Bloomberg API"
       ],
       "demo": {
         "src": "/assets/etf.webm",
-        "href": "https://gitlab.engr.illinois.edu/ie421_high_frequency_trading_spring_2026/ie421_hft_spring_2026_group_02/group_02_project/",
+        "href": "https://github.com/Chikki06/etf-holding-pipeline",
         "label": "Repo"
       }
     },
@@ -162,7 +165,7 @@
       "id": "synapse",
       "title": "Synapse",
       "subtitle": "HackIllinois · 1st of 678 · Best General Hack & Best Use of Cloudflare",
-      "shortDescription": "Turns beta feedback into live edits: per-tester Cloudflare sandboxes capture emotion, telemetry, and voice, then ship AI-generated GitHub PRs.",
+      "shortDescription": "Personalized Cloudflare sandboxes capture real-time emotion telemetry with Hume AI into ConvexDB, updating the UI via voice feedback.",
       "hasDetails": true,
       "links": [
         {
@@ -174,28 +177,19 @@
       "features": [
         {
           "title": "Edge sandboxes",
-          "description": "Isolated Cloudflare Containers (Durable Objects) with persistent filesystems; Workers orchestrate Studio UI, file ops, and Cloudflare AI edits at the edge."
+          "description": "Provisioned personalized Cloudflare sandboxes capturing real-time emotion telemetry with Hume AI into ConvexDB, updating the UI instantly via voice feedback."
         },
         {
-          "title": "Multimodal session capture",
-          "description": "Hume webcam emotion over time, click/mouse telemetry, and ElevenLabs voice; Gemini refines speech into one clean instruction before the code model runs."
-        },
-        {
-          "title": "Memory → auto PRs",
-          "description": "Supermemory keeps prior prompts and file changes across sessions; Convex drives GitHub branching, commits, and single- or multi-sandbox pull requests."
+          "title": "Voice + prompt refinement",
+          "description": "Integrated ElevenLabs TTS/STT and prompt-refinement pipelines using Gemini."
         }
       ],
       "technologies": [
-        "Cloudflare Workers",
-        "Cloudflare Containers",
+        "Cloudflare",
         "Convex",
-        "Next.js",
-        "Supermemory",
         "Hume AI",
         "ElevenLabs",
-        "Gemini",
-        "Better Auth",
-        "TypeScript"
+        "Gemini"
       ],
       "demo": {
         "src": "/assets/synapse.webm",
@@ -204,6 +198,29 @@
       }
     },
     "tags": ["hackathon", "voice", "ml"]
+  },
+  {
+    "id": "2026-philosophy-club",
+    "type": "career",
+    "year": 2026,
+    "dateLabel": "Jul 2026 – Present",
+    "title": "Treasurer",
+    "organization": "Philosophy Club",
+    "location": "UIUC",
+    "cardLines": [
+      "Treasurer · Philosophy Club",
+      "Weekly open-forum meetings on ethics and AI alignment."
+    ],
+    "bullets": [
+      "Facilitated weekly open-forum meetings on ethics, AI alignment, and related topics."
+    ],
+    "links": [
+      {
+        "label": "Friendship talk",
+        "url": "https://docs.google.com/presentation/d/1CpV94w-TsHhXHTX07ijKDcQniKBuesQEzMnIMD-YIz4/edit?usp=drivesdk"
+      }
+    ],
+    "tags": ["leadership", "philosophy"]
   },
   {
     "id": "2026-portfolio-site",
@@ -223,6 +240,10 @@
         {
           "label": "Repo",
           "url": "https://github.com/Chikki06/chikki06.github.io"
+        },
+        {
+          "label": "3D scene",
+          "url": "/3"
         }
       ],
       "tags": ["R3F", "GSAP", "Three.js", "Vite"],

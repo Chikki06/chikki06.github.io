@@ -57,12 +57,14 @@ export default function OutboundLink({
   if (!link?.url) return null;
   const { label, Icon } = resolveLinkPresentation(link);
   const pad = compact ? "px-2 py-1 text-sm" : "px-3 py-2 text-sm";
+  const url = String(link.url);
+  const isInternal = url.startsWith("/") && !url.startsWith("//");
 
   return (
     <a
       href={link.url}
-      target="_blank"
-      rel="noreferrer"
+      target={isInternal ? undefined : "_blank"}
+      rel={isInternal ? undefined : "noreferrer"}
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 border border-neutral-700 font-mono transition-colors hover:border-[#FF0000] hover:bg-[#FF0000]/10 hover:text-[#FF0000] ${pad} ${className}`}
       style={{ color: ACCENT }}

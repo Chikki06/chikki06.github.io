@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Mail, Linkedin, Github } from "lucide-react";
-import { useContent } from "../hooks/useContent.js";
-import ProjectModal from "./ProjectModal.jsx";
-import HoverDemoVideo, { resolveDemo } from "./HoverDemoVideo.jsx";
 import OutboundLink from "./OutboundLink.jsx";
+import HoverDemoVideo, { resolveDemo } from "./HoverDemoVideo.jsx";
+import ProjectModal from "./ProjectModal.jsx";
+import { useContent } from "../hooks/useContent.js";
+import { usePrefetchStoryAssets } from "../hooks/usePrefetchStoryAssets.js";
+import { Mail, Linkedin, Github } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const ACCENT = "#FF0000";
 const BG = "#0a0a0a";
@@ -92,7 +93,7 @@ function NodeMedia({ node, demo, clipScroll = false, mediaEnabled = true }) {
   return (
     <aside className="mt-3 md:mt-0 md:ml-4 md:w-56 md:shrink-0">
       <div
-        className={`portfolio-scroll flex h-auto max-h-52 flex-col gap-2 md:max-h-64 ${
+        className={`flex h-auto max-h-52 flex-col gap-2 md:max-h-64 ${
           clipScroll ? "overflow-clip" : "overflow-y-auto"
         }`}
       >
@@ -299,6 +300,18 @@ function TimelineNode({ node, onOpenDetail, clipMedia = false, mediaEnabled = tr
                 ))}
               </ul>
             )}
+            {node.links?.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {node.links.map((link) => (
+                  <OutboundLink
+                    key={`${link.label}-${link.url}`}
+                    link={link}
+                    compact
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                ))}
+              </div>
+            )}
           </div>
           <NodeMedia node={node} demo={demo} clipScroll={clipMedia} mediaEnabled={mediaEnabled} />
         </div>
@@ -371,6 +384,8 @@ export default function Portfolio({
   style,
   /** When false, skip attaching demo video sources (hidden 3D monitor clone). */
   loadMedia = true,
+  /** Desktop `/` only: warm 3D assets after static images settle. Never on mobile. */
+  prefetchStoryAssets = false,
 }) {
   const embedded = mode === "monitor" || mode === "fullscreen";
   const isMonitor = mode === "monitor";
@@ -384,7 +399,9 @@ export default function Portfolio({
   const [modalProject, setModalProject] = useState(null);
   const [endSpacerPx, setEndSpacerPx] = useState(280);
   const [monitorOffset, setMonitorOffset] = useState(0);
+  const rootRef = useRef(null);
   const pageScrollRef = useRef(null);
+  usePrefetchStoryAssets(rootRef, { enabled: prefetchStoryAssets && mode === "page" });
   const timelineContainerRef = useRef(null);
   const timelineContentRef = useRef(null);
   const monitorOffsetRef = useRef(0);
@@ -403,6 +420,8 @@ export default function Portfolio({
         { id: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/in/akshat-kumar-shahi/" },
         { id: "github", label: "GitHub", url: "https://github.com/Chikki06" },
       ];
+  const skills = site?.skills && typeof site.skills === "object" ? site.skills : null;
+  const showSkills = Boolean(skills && (skills.languages || skills.technologies) && !isMonitor && !isShort);
 
   const filteredData = useMemo(() => nodesForFilter(timeline, filter), [filter, timeline]);
 
@@ -707,8 +726,9 @@ export default function Portfolio({
     "relative text-white",
     mobileUnifiedScroll
       ? `h-full portfolio-scroll ${modalProject ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`
-      : "overflow-hidden",
-    mode === "page" ? "min-h-screen" : mobileUnifiedScroll ? "" : "flex h-full min-h-0 flex-col",
+      : mode === "page"
+        ? "portfolio-page flex h-dvh flex-col overflow-hidden"
+        : "flex h-full min-h-0 flex-col overflow-hidden",
     className,
   ]
     .filter(Boolean)
@@ -716,26 +736,32 @@ export default function Portfolio({
 
   return (
     <div
-      ref={mobileUnifiedScroll ? pageScrollRef : undefined}
+      ref={(node) => {
+        rootRef.current = node;
+        if (mobileUnifiedScroll) pageScrollRef.current = node;
+      }}
       className={rootClassName}
       style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif", ...style }}
     >
       <header
-        className={`relative z-10 border-b border-neutral-900 px-4 md:px-8 ${
+        className={`relative z-10 shrink-0 border-b border-neutral-900 px-4 md:px-8 ${
           isShort ? "py-2.5" : "py-5 md:py-10"
         }`}
       >
         <div className="mx-auto max-w-6xl">
-          <h1
-            className={`font-semibold tracking-tight text-white ${
-              isShort ? "text-xl leading-tight" : "text-3xl md:text-4xl"
-            }`}
-          >
-            {hero.name || "Akshat Kumar Shahi"}
-          </h1>
-          {hero.tagline && !isShort && (
-            <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>
-          )}
+          {/* Reserve top-right space for the fixed SiteNav. */}
+          <div className="pr-36 md:pr-44">
+            <h1
+              className={`font-semibold tracking-tight text-white ${
+                isShort ? "text-xl leading-tight" : "text-3xl md:text-4xl"
+              }`}
+            >
+              {hero.name || "Akshat Kumar Shahi"}
+            </h1>
+            {hero.tagline && !isShort && (
+              <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>
+            )}
+          </div>
           <div
             className={`flex flex-wrap items-center gap-x-5 gap-y-1 ${
               isShort ? "mt-1.5 text-sm" : "mt-3 text-base md:mt-4"
@@ -768,16 +794,39 @@ export default function Portfolio({
               );
             })}
           </div>
+          {showSkills && (
+            <div className="mt-4 max-w-3xl space-y-1 text-sm leading-relaxed text-neutral-300">
+              <div className="mb-1.5 font-mono text-xs uppercase tracking-[0.18em] text-white">
+                Technical Skills
+              </div>
+              {skills.languages && (
+                <p>
+                  <span className="font-medium text-white">Languages: </span>
+                  {skills.languages}
+                </p>
+              )}
+              {skills.technologies && (
+                <p>
+                  <span className="font-medium text-white">Technologies: </span>
+                  {skills.technologies}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
       <div
         className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 md:px-8 ${
-          isShort ? "pb-8 pt-2" : "pb-16 pt-3 md:pt-14"
-        } ${embedded && !mobileUnifiedScroll ? "min-h-0 flex-1" : ""}`}
+          isShort
+            ? "pb-8 pt-2"
+            : mode === "page"
+              ? "pb-4 pt-3 md:pt-8"
+              : "pb-16 pt-3 md:pt-14"
+        } ${mode === "page" || (embedded && !mobileUnifiedScroll) ? "min-h-0 flex-1" : ""}`}
       >
         <aside className={`w-32 shrink-0 ${isCompact ? "hidden" : "hidden md:block"}`}>
-          <div className={embedded ? "sticky top-0" : "sticky top-16"}>
+          <div className={mode === "page" || embedded ? "sticky top-0" : "sticky top-16"}>
             <div className="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-white">Years</div>
             <nav className="space-y-0.5 text-sm">
               {grouped.years.map((year) => {
@@ -804,9 +853,9 @@ export default function Portfolio({
           </div>
         </aside>
 
-        <main className={`flex-1 ${embedded && !mobileUnifiedScroll ? "flex min-h-0 flex-col" : ""}`}>
+        <main className={`flex-1 ${mode === "page" || (embedded && !mobileUnifiedScroll) ? "flex min-h-0 flex-col" : ""}`}>
           <div
-            className={`sticky top-0 z-20 border-b border-neutral-900 ${
+            className={`shrink-0 sticky top-0 z-20 border-b border-neutral-900 ${
               isShort ? "pb-2 pt-1" : "pb-3 pt-2 md:pb-4"
             }`}
             style={{ backgroundColor: BG }}
@@ -882,16 +931,15 @@ export default function Portfolio({
               mobileUnifiedScroll
                 ? "mt-3"
                 : modalProject
-                  ? embedded
+                  ? mode === "page" || embedded
                     ? "mt-3 min-h-0 flex-1 overflow-hidden"
                     : "mt-6 overflow-hidden"
                   : mode === "monitor"
                     ? "mt-3 min-h-0 flex-1 overflow-clip"
-                    : embedded
+                    : mode === "page" || embedded
                       ? "mt-3 min-h-0 flex-1 overflow-y-auto"
                       : "mt-6 overflow-y-auto"
             }`}
-            style={embedded || mobileUnifiedScroll ? undefined : { maxHeight: "calc(100vh - 210px)" }}
           >
             <div className={`absolute bottom-0 left-[10px] top-0 w-px bg-neutral-900 ${isCompact ? "hidden" : "hidden md:block"}`} />
 

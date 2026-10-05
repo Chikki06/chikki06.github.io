@@ -125,7 +125,9 @@ export default function HoverDemoVideo({
               playsInline
               autoPlay={autoPlay}
               preload="auto"
-              className="absolute inset-0 h-full w-full object-cover"
+              // Videos capture wheel in some browsers and kill parent scroll.
+              // Clicks still hit the wrapping <a> when href is set.
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               aria-label={title}
             />
           ) : (

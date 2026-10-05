@@ -16,67 +16,29 @@ import LetterFace from "./storyFaces/LetterFace.jsx";
 import { createStoryData, projectSummary, projectTitle } from "./storyData.js";
 import { ensureStoryFonts } from "../lib/storyFonts.js";
 import { getCachedDemoSrc } from "../lib/demoVideoCache.js";
+import { navigate } from "../lib/navigate.js";
+import {
+  CAMERA_GLTF,
+  ENVELOPE,
+  MONITOR_GLTF,
+  PAPER,
+  POLAROID_GLTF,
+  TABLE,
+  WALL,
+  preloadStoryAssets,
+} from "../lib/storyAssets.js";
 import { Model as MonitorModel } from "../models/Monitor.jsx";
 import { Model as PolaroidModel } from "../models/Polaroid.jsx";
 import { Model as PolaroidCameraModel } from "../models/Camera.jsx";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const PAPER = "/assets/card.webp";
-const ENVELOPE = "/assets/envelope.webp";
-const TABLE = "/assets/table.webp";
-const WALL = "/assets/wall.webp";
-const DESK_TEXTURES = [PAPER, ENVELOPE, TABLE, WALL];
-const MONITOR_GLTF = "/assets/monitor/scene.gltf";
-const POLAROID_GLTF = "/assets/polaroid/scene.gltf";
-const CAMERA_GLTF = "/assets/camera/scene.gltf";
 const DEMO_BY_PROJECT_ID = {
   aerocast: { src: "/assets/aerocast.webm", href: "https://github.com/Chikki06/aerocast" },
   synapse: { src: "/assets/synapse.webm", href: "https://devpost.com/software/synapse-dx7hcr" },
-  "cisl-platform": { src: "/assets/remotegpu.webm", href: "https://youtu.be/V6QrnFpiEwM" },
+  "cisl-platform": { src: "/assets/remotegpu.webm", href: "https://www.youtube.com/watch?v=V6QrnFpiEwM" },
   "portfolio-site": { src: "/assets/site.webm", href: "https://akshatshahi.com" },
 };
-
-/** Wait until imgs under `root` have settled (or timeout). Used so 3D assets don't steal bandwidth. */
-function whenImagesSettled(root, timeoutMs = 4500) {
-  return new Promise((resolve) => {
-    const imgs = root ? Array.from(root.querySelectorAll("img")) : [];
-    if (!imgs.length) {
-      resolve();
-      return;
-    }
-    let pending = imgs.length;
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      resolve();
-    };
-    const onOne = () => {
-      pending -= 1;
-      if (pending <= 0) finish();
-    };
-    const timer = window.setTimeout(finish, timeoutMs);
-    for (const img of imgs) {
-      if (img.complete) onOne();
-      else {
-        img.addEventListener("load", onOne, { once: true });
-        img.addEventListener("error", onOne, { once: true });
-      }
-    }
-  });
-}
-
-/** Warm drei's loader cache for desk planes + GLTFs (camera.bin rides along with CAMERA_GLTF). */
-function preloadStoryAssets({ heavy = false } = {}) {
-  for (const src of DESK_TEXTURES) useTexture.preload(src);
-  useGLTF.preload(MONITOR_GLTF);
-  if (heavy) {
-    useGLTF.preload(POLAROID_GLTF);
-    useGLTF.preload(CAMERA_GLTF);
-  }
-}
 
 function resolveNodeDemo(node) {
   const fromProject = node?.project?.demo;
@@ -190,14 +152,6 @@ const CARD_FLIP_PULL_FACTOR = 1.75;
 const STORY_WHEEL_MAX_DELTA = 160;
 const STORY_WHEEL_MAX_SPEED = 2.6; // px/ms
 
-// Clear any older durable preference so hard refresh always shows the desktop prompt.
-if (typeof window !== "undefined") {
-  try {
-    window.localStorage.removeItem("portfolio-experience-pref");
-  } catch {
-    // Ignore private-mode failures.
-  }
-}
 
 function getStoryScrollTrigger() {
   return ScrollTrigger.getById("portfolio-story");
@@ -1404,35 +1358,6 @@ function ClickMarks({ marks }) {
   );
 }
 
-function ExperienceChoiceDialog({ onChoose3d, onChooseStatic }) {
-  return (
-    <div className="pointer-events-auto absolute inset-0 z-[52] flex items-center justify-center bg-black/55 px-5 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="experience-choice-title">
-      <div className="w-full max-w-md border border-white/15 bg-black/90 p-6 text-white shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
-        <p className="font-mono text-[10px] uppercase tracking-[.22em] text-white/45">Desktop</p>
-        <h2 id="experience-choice-title" className="mt-3 text-2xl font-semibold tracking-[-.03em]">
-          How do you want to view this site?
-        </h2>
-        <div className="mt-6 grid gap-2.5">
-          <button
-            type="button"
-            onClick={onChoose3d}
-            className="border border-[#FF0000]/70 bg-[#FF0000]/15 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[#FF0000]/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000]"
-          >
-            3D scene
-          </button>
-          <button
-            type="button"
-            onClick={onChooseStatic}
-            className="border border-white/20 bg-white/5 px-4 py-3 text-left text-sm text-white/85 transition hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0000]"
-          >
-            Static site
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ScrollStory() {
   const { timeline, site, loading, error } = useContent();
   const rootRef = useRef();
@@ -1440,28 +1365,20 @@ export default function ScrollStory() {
   const lastProjectButton = useRef();
   const monitorScrollControllerRef = useRef(null);
   const lockedScrollYRef = useRef(0);
-  const introStartedRef = useRef(false);
   // Ignore duplicate Esc / Desk-view while an overlay exit is already animating.
   const exitInFlightRef = useRef(false);
-  // In-memory only for this page load — hard refresh shows the prompt again.
-  const experiencePref = useRef(null);
-  // True when fullscreen was opened from the 3D monitor beat (not the landing overlay).
+  // True when fullscreen was opened from the 3D monitor beat.
   const openedFromStoryRef = useRef(false);
-  // Crossfade waits until the desk/monitor shell has loaded under the overlay.
-  const pendingIntroRef = useRef(false);
   const [phase, setPhase] = useState(1);
   const [storyProgress, setStoryProgress] = useState(0);
   const [cardFace, setCardFace] = useState("front");
   const [modalProject, setModalProject] = useState(null);
-  // Land on the projects-site monitor canvas fullscreen by default.
-  const [monitorFullscreen, setMonitorFullscreen] = useState(true);
-  const [showSiteOverlay, setShowSiteOverlay] = useState(true);
+  // `/3` starts in the scroll story; F expands the monitor into a DOM overlay.
+  const [monitorFullscreen, setMonitorFullscreen] = useState(false);
+  const [showSiteOverlay, setShowSiteOverlay] = useState(false);
   const [introPhase, setIntroPhase] = useState(null);
-  const [askExperience, setAskExperience] = useState(false);
-  const askExperienceRef = useRef(false);
-  askExperienceRef.current = askExperience;
-  // Mount WebGL only after the static portfolio has had network priority (or on 3D intent).
-  const [sceneEnabled, setSceneEnabled] = useState(false);
+  // Mount WebGL on `/3` immediately (assets may already be warm from desktop `/` prefetch).
+  const [sceneEnabled, setSceneEnabled] = useState(true);
   const [shellReady, setShellReady] = useState(false);
   // Polaroid + camera GLTFs (camera.bin is large): desktop after shell warm; mobile after story entry.
   const [heavyPropsEnabled, setHeavyPropsEnabled] = useState(false);
@@ -1491,14 +1408,20 @@ export default function ScrollStory() {
   isDesktopRef.current = isDesktop;
   const [webgl] = useState(hasWebGL);
   const data = useMemo(() => createStoryData(timeline, site), [timeline, site]);
-  const inIntro = Boolean(introPhase);
-  const cameraViewActive = !showSiteOverlay && !inIntro;
+  const cameraViewActive = !showSiteOverlay;
   // Pin the 3D camera to the monitor while the DOM portfolio covers it, so reveal never flashes the card.
-  const holdMonitorCamera = showSiteOverlay || introPhase === "pin-monitor";
+  const holdMonitorCamera = showSiteOverlay;
   const openProject = useCallback((project, trigger) => { lastProjectButton.current = trigger; setModalProject(project); }, []);
   const closeProject = useCallback(() => { setModalProject(null); requestAnimationFrame(() => lastProjectButton.current?.focus()); }, []);
   const setMonitorScrollController = useCallback((controller) => {
     monitorScrollControllerRef.current = controller;
+  }, []);
+
+  // Keep the public URL on `/3` while the story owns the view (Esc / F never full-reload).
+  useEffect(() => {
+    if (window.location.pathname !== "/3" && !window.location.pathname.startsWith("/3/")) {
+      navigate("/3", { replace: true });
+    }
   }, []);
 
   // Sync hold/lock refs immediately. Never scrollTo from this path — it runs from
@@ -1565,30 +1488,6 @@ export default function ScrollStory() {
     if (overlayRef.current) gsap.killTweensOf(overlayRef.current);
   }, []);
 
-  // Ask desktop visitors once per page load (in-memory).
-  useEffect(() => {
-    if (reducedMotion || !webgl) return undefined;
-    if (experiencePref.current === "static" || experiencePref.current === "3d") {
-      setAskExperience(false);
-      return undefined;
-    }
-    if (isDesktop) setAskExperience(true);
-    return undefined;
-  }, [isDesktop, reducedMotion, webgl]);
-
-  const onIntroComplete = useCallback(() => {
-    introStartedRef.current = false;
-    exitInFlightRef.current = false;
-    monitorHoldActiveRef.current = false;
-    setMonitorHoldActive(false);
-    setMonitorScrollLocked(false);
-    setMonitorEdgeHint(null);
-    setIntroPhase(null);
-    setPhase(1);
-    setStoryProgress(0);
-    setCardFace("front");
-  }, []);
-
   // Fade the DOM portfolio out over the live 3D canvas (monitor already framed underneath).
   const crossfadeOverlayOut = useCallback((onComplete) => {
     const overlay = overlayRef.current;
@@ -1611,60 +1510,20 @@ export default function ScrollStory() {
     });
   }, []);
 
-  const runIntroCrossfade = useCallback(() => {
-    crossfadeOverlayOut(() => {
-      setShowSiteOverlay(false);
-      setIntroPhase("zoom-out");
-    });
-  }, [crossfadeOverlayOut]);
-
   const handleMonitorReady = useCallback(() => {
     setShellReady(true);
     ScrollTrigger.refresh();
-    if (pendingIntroRef.current) {
-      pendingIntroRef.current = false;
-      runIntroCrossfade();
-    }
-  }, [runIntroCrossfade]);
+  }, []);
 
-  // After static portfolio textures settle, warm the desk/monitor shell.
-  // Desktop also starts fetching every 3D GLTF (incl. camera.bin) in parallel.
+  // Warm desk/monitor assets as soon as `/3` mounts.
   useEffect(() => {
     if (reducedMotion || !webgl) return undefined;
-    if (!showSiteOverlay) return undefined;
-    let cancelled = false;
-    let idleId;
-    let timeoutId;
+    preloadStoryAssets({ heavy: isDesktopRef.current }).catch(() => {});
+    setSceneEnabled(true);
+    return undefined;
+  }, [reducedMotion, webgl]);
 
-    const warm = () => {
-      if (cancelled || experiencePref.current === "static") return;
-      const desktop = isDesktopRef.current;
-      preloadStoryAssets({ heavy: desktop });
-      setSceneEnabled(true);
-    };
-
-    const start = async () => {
-      // Two frames so Portfolio can commit its <img>s into the overlay.
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      if (cancelled) return;
-      await whenImagesSettled(overlayRef.current);
-      if (cancelled || experiencePref.current === "static") return;
-      if (typeof requestIdleCallback === "function") {
-        idleId = requestIdleCallback(warm, { timeout: 800 });
-      } else {
-        timeoutId = window.setTimeout(warm, 200);
-      }
-    };
-    start();
-
-    return () => {
-      cancelled = true;
-      if (idleId != null) window.cancelIdleCallback?.(idleId);
-      if (timeoutId != null) window.clearTimeout(timeoutId);
-    };
-  }, [reducedMotion, showSiteOverlay, webgl]);
-
-  // Story-face fonts + stamp only when the 3D shell is actually mounting (not on static landing).
+  // Story-face fonts + stamp when the 3D shell mounts.
   useEffect(() => {
     if (!sceneEnabled) return undefined;
     ensureStoryFonts();
@@ -1674,16 +1533,16 @@ export default function ScrollStory() {
     return undefined;
   }, [sceneEnabled]);
 
-  // Heavy GLTFs (camera.bin + polaroid): desktop mounts once the shell is ready
-  // under the overlay; mobile still waits until the scroll story is active.
+  // Heavy GLTFs (camera.bin + polaroid): desktop mounts once the shell is ready;
+  // mobile waits until the scroll story is active (not while a monitor overlay is open).
   useEffect(() => {
     if (!sceneEnabled || !shellReady) return undefined;
     if (isDesktop) {
-      preloadStoryAssets({ heavy: true });
+      preloadStoryAssets({ heavy: true }).catch(() => {});
       setHeavyPropsEnabled(true);
       return undefined;
     }
-    if (showSiteOverlay || introPhase) return undefined;
+    if (showSiteOverlay) return undefined;
     const enableHeavy = () => setHeavyPropsEnabled(true);
     let idleId;
     let timeoutId;
@@ -1696,59 +1555,13 @@ export default function ScrollStory() {
       if (idleId != null) window.cancelIdleCallback?.(idleId);
       if (timeoutId != null) window.clearTimeout(timeoutId);
     };
-  }, [introPhase, isDesktop, sceneEnabled, shellReady, showSiteOverlay]);
+  }, [isDesktop, sceneEnabled, shellReady, showSiteOverlay]);
 
-  // Pin monitor under the DOM portfolio, crossfade the overlay away, then pan to card 1.
-  const beginExperienceIntro = useCallback(() => {
-    if (introStartedRef.current) return;
-    introStartedRef.current = true;
-    exitInFlightRef.current = true;
-    openedFromStoryRef.current = false;
-    monitorHoldActiveRef.current = false;
-    setMonitorHoldActive(false);
-    setMonitorScrollLocked(false);
-    setMonitorEdgeHint(null);
-    setAskExperience(false);
-    setExitHint(false);
-    lockedScrollYRef.current = 0;
-    setPhase(1);
-    setStoryProgress(0);
-    setCardFace("front");
-    setIntroPhase("pin-monitor");
-    // Choosing 3D early: pull in the full asset set (desktop includes camera.bin).
-    preloadStoryAssets({ heavy: isDesktopRef.current });
-    setSceneEnabled(true);
-    if (isDesktopRef.current) setHeavyPropsEnabled(true);
-
-    if (shellReady) {
-      runIntroCrossfade();
-    } else {
-      pendingIntroRef.current = true;
-    }
-  }, [runIntroCrossfade, shellReady]);
-
-  const choose3d = useCallback(() => {
-    experiencePref.current = "3d";
-    askExperienceRef.current = false;
-    setAskExperience(false);
-    beginExperienceIntro();
-  }, [beginExperienceIntro]);
-
-  const chooseStatic = useCallback(() => {
-    experiencePref.current = "static";
-    askExperienceRef.current = false;
-    setAskExperience(false);
-    pendingIntroRef.current = false;
-    setSceneEnabled(false);
-    setShellReady(false);
-    setHeavyPropsEnabled(false);
-  }, []);
-
-  // Crossfade back to the 3D monitor framing the user came from (no chapter-1 intro).
+  // Crossfade back to the 3D monitor framing the user came from.
   const restoreStoryFullscreenExit = useCallback(() => {
     setExitHint(false);
-    askExperienceRef.current = false;
-    setAskExperience(false);
+    // Stay on `/3` without a document reload.
+    if (window.location.pathname !== "/3") navigate("/3", { replace: true });
     window.scrollTo(0, lockedScrollYRef.current);
     setSceneEnabled(true);
 
@@ -1766,39 +1579,25 @@ export default function ScrollStory() {
   }, [crossfadeOverlayOut]);
 
   const exitMonitorFullscreen = useCallback(() => {
-    // Prompt still open — Esc means static, never the 3D intro.
-    if (askExperienceRef.current) {
-      chooseStatic();
-      return;
-    }
-    // Double Esc / Desk-view during the crossfade must not start the card intro
-    // after a monitor restore already cleared openedFromStoryRef.
-    if (exitInFlightRef.current || introStartedRef.current) return;
+    if (exitInFlightRef.current) return;
+    if (!showSiteOverlay) return;
 
     exitInFlightRef.current = true;
-    // Returning from the static fullscreen site → unlocked so scroll can leave the monitor.
     monitorScrollLockedRef.current = false;
     setMonitorScrollLocked(false);
     setMonitorEdgeHint(null);
-    // Opened from the 3D story → crossfade back to the current monitor beat.
-    if (openedFromStoryRef.current) {
-      openedFromStoryRef.current = false;
-      restoreStoryFullscreenExit();
-      return;
-    }
-    // Landing / first exit after a decision → crossfade then pan to card 1.
-    if (!experiencePref.current) experiencePref.current = "3d";
-    beginExperienceIntro();
-  }, [beginExperienceIntro, chooseStatic, restoreStoryFullscreenExit]);
+    openedFromStoryRef.current = false;
+    restoreStoryFullscreenExit();
+  }, [restoreStoryFullscreenExit, showSiteOverlay]);
 
   const enterMonitorFullscreen = useCallback(() => {
     exitInFlightRef.current = false;
     openedFromStoryRef.current = true;
     lockedScrollYRef.current = window.scrollY;
+    // Expanding the site keeps the `/3` route — Esc returns here without remounting.
+    if (window.location.pathname !== "/3") navigate("/3", { replace: true });
     setShowSiteOverlay(true);
     setMonitorFullscreen(true);
-    askExperienceRef.current = false;
-    setAskExperience(false);
     requestAnimationFrame(() => {
       const overlay = overlayRef.current;
       if (!overlay) return;
@@ -1808,11 +1607,11 @@ export default function ScrollStory() {
     });
   }, []);
 
-  // Freeze page scroll + ScrollTrigger while the overlay or intro owns the view.
+  // Freeze page scroll + ScrollTrigger while the overlay owns the view.
   // Do not pin body with position:fixed — that unsticks/replaces the viewport canvas
   // and flashes a second non-interactive story frame at document top.
   useEffect(() => {
-    if (!showSiteOverlay && !inIntro) return undefined;
+    if (!showSiteOverlay) return undefined;
     const storyTrigger = ScrollTrigger.getById("portfolio-story");
     storyTrigger?.disable(false);
     const html = document.documentElement;
@@ -1834,19 +1633,11 @@ export default function ScrollStory() {
       }
     };
     const blockPageWheel = (event) => {
-      if (inIntro) {
-        event.preventDefault();
-        return;
-      }
       if (!event.target?.closest?.("[data-monitor-fullscreen]")) {
         event.preventDefault();
       }
     };
     const blockTouchScroll = (event) => {
-      if (inIntro) {
-        event.preventDefault();
-        return;
-      }
       if (!event.target?.closest?.("[data-monitor-fullscreen]")) {
         event.preventDefault();
       }
@@ -1863,32 +1654,27 @@ export default function ScrollStory() {
       html.style.overscrollBehavior = previous.htmlOverscroll;
       body.style.overscrollBehavior = previous.bodyOverscroll;
       window.scrollTo(0, previous.scrollY);
-      // ScrollTrigger is re-enabled by intro completion or restoreStoryFullscreenExit.
     };
-  }, [inIntro, showSiteOverlay]);
+  }, [showSiteOverlay]);
 
-  // Single Esc path: while the prompt is up → static; after a decision → leave fullscreen / enter 3D.
+  // Esc leaves the monitor overlay and returns to the `/3` desk view (no reload).
   // Nested project modals own Escape — only exit the site overlay when none are open.
   useEffect(() => {
-    if (!showSiteOverlay || inIntro) return undefined;
+    if (!showSiteOverlay) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       if (document.querySelector("[data-project-modal]")) return;
       event.preventDefault();
       event.stopPropagation();
-      if (askExperienceRef.current) {
-        chooseStatic();
-        return;
-      }
       exitMonitorFullscreen();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [chooseStatic, exitMonitorFullscreen, inIntro, showSiteOverlay]);
+  }, [exitMonitorFullscreen, showSiteOverlay]);
 
   // F expands the in-scene monitor into the fullscreen site.
   useEffect(() => {
-    if (showSiteOverlay || inIntro || !monitorHoldActive) return undefined;
+    if (showSiteOverlay || !monitorHoldActive) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "f" && event.key !== "F") return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1899,11 +1685,11 @@ export default function ScrollStory() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enterMonitorFullscreen, inIntro, monitorHoldActive, showSiteOverlay]);
+  }, [enterMonitorFullscreen, monitorHoldActive, showSiteOverlay]);
 
   // Space or click leaves the monitor hold once an edge prompt is showing.
   useEffect(() => {
-    if (!isDesktop || showSiteOverlay || inIntro || !monitorHoldActive || !monitorScrollLocked) return undefined;
+    if (!isDesktop || showSiteOverlay || !monitorHoldActive || !monitorScrollLocked) return undefined;
 
     const canLeave = () => Boolean(monitorEdgeHintRef.current);
 
@@ -1929,7 +1715,7 @@ export default function ScrollStory() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [inIntro, isDesktop, leaveMonitorScroll, monitorHoldActive, monitorScrollLocked, showSiteOverlay]);
+  }, [isDesktop, leaveMonitorScroll, monitorHoldActive, monitorScrollLocked, showSiteOverlay]);
 
   // Every primary press gets a small mark at the cursor tip (hotspot).
   useEffect(() => {
@@ -1946,7 +1732,7 @@ export default function ScrollStory() {
   // Crossing into the hold clamps onto the near edge (user-gesture scrollTo only — never
   // from ScrollTrigger onUpdate, which was slingshotting the camera to chapter 1).
   useEffect(() => {
-    if (showSiteOverlay || inIntro || !isDesktop) return undefined;
+    if (showSiteOverlay || !isDesktop) return undefined;
 
     const softCap = wheelSoftCapRef.current;
 
@@ -2051,7 +1837,7 @@ export default function ScrollStory() {
       window.removeEventListener("wheel", onWheel, { capture: true });
       setMonitorEdgeHint(null);
     };
-  }, [inIntro, isDesktop, showSiteOverlay]);
+  }, [isDesktop, showSiteOverlay]);
 
   // Clear edge UI when leaving the hold beat (lock re-arm is handled sync in onMonitorHoldActiveChange).
   useEffect(() => {
@@ -2060,10 +1846,21 @@ export default function ScrollStory() {
   }, [monitorHoldActive]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">Loading portfolio…</div>;
-  if (reducedMotion || !webgl) return <><StaticPortfolioFallback data={data} reason={reducedMotion ? "Reduced-motion view enabled." : "Interactive 3D is unavailable in this browser."} onOpenProject={openProject} /><ProjectModal project={modalProject} isOpen={Boolean(modalProject)} onClose={closeProject} /></>;
+  if (reducedMotion || !webgl) {
+    return (
+      <>
+        <StaticPortfolioFallback
+          data={data}
+          reason={reducedMotion ? "Reduced-motion view enabled." : "Interactive 3D is unavailable in this browser."}
+          onOpenProject={openProject}
+        />
+        <ProjectModal project={modalProject} isOpen={Boolean(modalProject)} onClose={closeProject} />
+      </>
+    );
+  }
   // Track height alone drives scrub length. The WebGL layer stays position:fixed so
-  // scroll lock / overlay / intro never swap in a second canvas at document top.
-  const storyChromeVisible = !showSiteOverlay && !inIntro;
+  // scroll lock / overlay never swap in a second canvas at document top.
+  const storyChromeVisible = !showSiteOverlay;
   // Remap scrub progress onto evenly spaced chapter dots so lock holds park on the
   // circle and journeys fill the line between them (no overshoot past the next lock).
   const navProgress = storyProgressToNavProgress(storyProgress);
@@ -2086,16 +1883,15 @@ export default function ScrollStory() {
           monitorFullscreen={monitorFullscreen}
           holdMonitorCamera={holdMonitorCamera}
           introPhase={introPhase}
-          onIntroComplete={onIntroComplete}
+          onIntroComplete={() => setIntroPhase(null)}
           monitorEdgeHint={monitorEdgeHint}
           monitorHoldActive={monitorHoldActive}
           heavyPropsEnabled={heavyPropsEnabled}
         />
       )}
       {storyChromeVisible && <StoryProgressNav phase={phase} progress={navProgress} />}
-      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 left-5 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">Scroll to explore</p>}
-      {storyChromeVisible && error && <p className="pointer-events-none absolute bottom-5 right-5 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
-      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 right-5 translate-y-6 text-[9px] text-white/40">Monitor: portgl16 · Polaroid: edoardogalati · Camera: Boxroom_3D · CC BY 4.0</p>}
+      {storyChromeVisible && error && <p className="pointer-events-none absolute bottom-5 right-5 z-40 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
+      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 right-5 z-40 translate-y-6 text-[9px] text-white/40">Monitor: portgl16 · Polaroid: edoardogalati · Camera: Boxroom_3D · CC BY 4.0</p>}
       {(monitorHoldActive && storyChromeVisible) && (
         <MonitorChromeControls
           fullscreen={false}
@@ -2105,25 +1901,20 @@ export default function ScrollStory() {
         />
       )}
     </div>
+    {storyChromeVisible && (
+      <p className="pointer-events-none fixed bottom-5 left-5 z-40 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">
+        Scroll to explore
+      </p>
+    )}
     {showSiteOverlay && (
       <div ref={overlayRef} data-monitor-fullscreen className="pointer-events-auto fixed inset-0 z-50 h-dvh bg-black" role="dialog" aria-modal="true" aria-label="Projects site">
         <Portfolio mode="fullscreen" className="h-full" onBottomOverscroll={flashExitHint} />
-        {!askExperience && (
-          <MonitorChromeControls
-            fullscreen
-            onToggleFullscreen={exitMonitorFullscreen}
-            exitHint={exitHint}
-            shortcut="Esc"
-          />
-        )}
-        {askExperience && <ExperienceChoiceDialog onChoose3d={choose3d} onChooseStatic={chooseStatic} />}
-        {introPhase === "pin-monitor" && !shellReady && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-10 z-[60] flex justify-center">
-            <p className="rounded bg-black/80 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/80">
-              Loading 3D scene…
-            </p>
-          </div>
-        )}
+        <MonitorChromeControls
+          fullscreen
+          onToggleFullscreen={exitMonitorFullscreen}
+          exitHint={exitHint}
+          shortcut="Esc"
+        />
       </div>
     )}
     <ClickMarks marks={clickMarks} />

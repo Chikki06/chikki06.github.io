@@ -1,8 +1,8 @@
 {
   "hero": {
     "name": "Akshat Kumar Shahi",
-    "tagline": "CS @ UIUC · systems, ML, and research-driven engineering",
-    "subheader": "Secretary, Philosophy Club"
+    "tagline": "CS @ UIUC · Computer Vision, ML Systems and Inference",
+    "subheader": "Treasurer, Philosophy Club"
   },
   "contact": {
     "email": "Akshatshahi2006@gmail.com"
@@ -18,5 +18,9 @@
       "label": "GitHub",
       "url": "https://github.com/Chikki06"
     }
-  ]
+  ],
+  "skills": {
+    "languages": "Python, C, C++, JavaScript, Rust, SQL, HTML, CSS",
+    "technologies": "PyTorch, TensorRT, CUDA, Slurm, Docker, Linux, CI/CD, Flask, React"
+  }
 }

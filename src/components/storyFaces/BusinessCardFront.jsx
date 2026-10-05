@@ -62,7 +62,7 @@ export default function BusinessCardFront({ data }) {
       </div>
 
       <p className="shrink-0 text-center text-[8px] uppercase tracking-[0.14em] text-[#5c564c]">
-        Software Systems · Data Engineering · Deep Learning
+        Computer Vision · ML Systems · Inference
       </p>
     </div>
   );

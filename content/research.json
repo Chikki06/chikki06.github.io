@@ -1,0 +1,79 @@
+{
+  "name": "Akshat Kumar Shahi",
+  "email": "Akshatshahi2006@gmail.com",
+  "headshot": "/assets/headshot.webp",
+  "tagline": "Computer Vision, ML Systems and Inference",
+  "about": "I work on computer vision and the systems that train and serve them: architecture tradeoffs, compiler-aware training, and efficient inference.",
+  "links": [
+    {
+      "id": "email",
+      "label": "Email",
+      "url": "mailto:Akshatshahi2006@gmail.com"
+    },
+    {
+      "id": "linkedin",
+      "label": "LinkedIn",
+      "url": "https://www.linkedin.com/in/akshat-kumar-shahi"
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "url": "https://github.com/Chikki06"
+    }
+  ],
+  "education": {
+    "institution": "University of Illinois Urbana-Champaign",
+    "degree": "B.S. in Computer Science, Mathematics minor",
+    "date": "Expected May 2028",
+    "gpa": "GPA: 3.86 (Dean's List)",
+    "coursework": "ML Sys, Distributed Sys, Algorithms, HFT Technology (C++), Sys Programming (C), Data Structures (C++), Abstract Linear Algebra, Computer Vision (Python), Computer Architecture",
+    "upcoming": "SP27: Advanced Performance Engineering, Compilers, Applied Parallel Programming (C++), Computer Sys Organization"
+  },
+  "researchExperience": [
+    {
+      "org": "Chemical Imaging and Structures Laboratory, UIUC",
+      "role": "Undergraduate Research Assistant (AI and Data subgroups)",
+      "location": "Urbana, IL",
+      "date": "Sep 2024 – Present",
+      "bullets": [
+        {
+          "label": "Train-time architecture optimizations",
+          "text": "Conducted ablation studies across attention mechanisms and backbones (convolutional ResNet/ConvNeXt, and transformer-based Restormer/SwinGAN) to optimize for inference latency, identifying a 1.8× faster Pareto-optimal configuration."
+        },
+        {
+          "label": "Post-training optimizations",
+          "text": "Engineered an FP16-native inference pipeline in PyTorch and TensorRT, achieving a 77% speedup via op-fusion, optimized host-to-device memory transfers, and a custom CUDA plugin."
+        },
+        {
+          "label": "Edge compute deployment",
+          "text": "Deployed the localized architecture into a containerized (Flask, SQLite, Docker) web platform, eliminating remote SMB file-transfer bottlenecks and cutting end-to-end analysis time by 99%.",
+          "links": [
+            {
+              "label": "Demo",
+              "url": "https://www.youtube.com/watch?v=wMGiFxNXJyw"
+            },
+            {
+              "label": "Platform",
+              "url": "https://cisl-inference.beckman.illinois.edu/"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Compiler-Aware Resolution Bucketing for DETR Models",
+      "meta": "ML Sys",
+      "date": "Aug 2026 – Present",
+      "bullets": [
+        "Investigating torch.compile shape-specialization overheads during dynamic multi-scale training for modern DETR-style multimodal vision detectors.",
+        "Designed a static resolution-bucketing policy minimizing Wasserstein-1 pixel-area distortion, cutting graph compilation latency and reducing training wall-time by 40% on COCO without sacrificing AP."
+      ]
+    }
+  ],
+  "skills": {
+    "languages": "Python, C, C++, JavaScript, Rust, SQL, HTML, CSS",
+    "technologies": "PyTorch, TensorRT, CUDA, Slurm, Docker, Linux, CI/CD, React"
+  }
+}

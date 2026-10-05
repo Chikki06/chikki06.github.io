@@ -16,6 +16,17 @@ export default defineConfig({
   plugins: [
     react(),
     {
+      name: "spa-github-pages",
+      closeBundle() {
+        // GitHub Pages serves 404.html for unknown paths — copy the SPA shell so `/3` and `/r` work.
+        const index = path.resolve(__dirname, "dist/index.html");
+        const notFound = path.resolve(__dirname, "dist/404.html");
+        if (fs.existsSync(index)) {
+          fs.copyFileSync(index, notFound);
+        }
+      },
+    },
+    {
       name: "dev-content-api",
       apply: "serve",
       configureServer(server) {

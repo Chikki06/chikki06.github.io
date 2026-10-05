@@ -23,10 +23,14 @@
   z-index: -1;
 }
 
+html,
+body {
+  cursor: var(--cursor-red-arrow), auto;
+}
+
 html:has(.scroll-story),
 body:has(.scroll-story) {
   scrollbar-width: none;
-  cursor: var(--cursor-red-arrow), auto;
   overscroll-behavior-y: none;
 }
 
@@ -35,56 +39,37 @@ body:has(.scroll-story)::-webkit-scrollbar {
   display: none;
 }
 
-html:has(.scroll-story) a,
-html:has(.scroll-story) button,
-html:has(.scroll-story) [role="button"],
-html:has(.scroll-story) label[for],
-html:has(.scroll-story) summary,
-body:has(.scroll-story) a,
-body:has(.scroll-story) button,
-body:has(.scroll-story) [role="button"],
-body:has(.scroll-story) label[for],
-body:has(.scroll-story) summary {
+a,
+button,
+[role="button"],
+label[for],
+summary {
   cursor: var(--cursor-red-pointer), pointer;
 }
 
 /* Text I-beam only on real editable fields — not on p/h3/li boxes (avoids
    whitespace hit-areas and arrow↔I-beam flicker in line gaps). */
-html:has(.scroll-story) input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-html:has(.scroll-story) textarea,
-html:has(.scroll-story) [contenteditable="true"],
-body:has(.scroll-story) input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-body:has(.scroll-story) textarea,
-body:has(.scroll-story) [contenteditable="true"] {
+input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+textarea,
+[contenteditable="true"] {
   cursor: var(--cursor-red-text), text;
 }
 
 /* Interactive controls win over nested children. */
-html:has(.scroll-story) a,
-html:has(.scroll-story) a *,
-html:has(.scroll-story) button,
-html:has(.scroll-story) button *,
-html:has(.scroll-story) [role="button"],
-html:has(.scroll-story) [role="button"] *,
-html:has(.scroll-story) label[for],
-html:has(.scroll-story) label[for] *,
-html:has(.scroll-story) summary,
-html:has(.scroll-story) summary *,
-body:has(.scroll-story) a,
-body:has(.scroll-story) a *,
-body:has(.scroll-story) button,
-body:has(.scroll-story) button *,
-body:has(.scroll-story) [role="button"],
-body:has(.scroll-story) [role="button"] *,
-body:has(.scroll-story) label[for],
-body:has(.scroll-story) label[for] *,
-body:has(.scroll-story) summary,
-body:has(.scroll-story) summary * {
+a,
+a *,
+button,
+button *,
+[role="button"],
+[role="button"] *,
+label[for],
+label[for] *,
+summary,
+summary * {
   cursor: var(--cursor-red-pointer), pointer;
 }
 
-html:has(.scroll-story) ::selection,
-body:has(.scroll-story) ::selection {
+::selection {
   background: var(--site-red);
   color: #fff;
 }
@@ -94,6 +79,44 @@ body:has(.scroll-story) ::selection {
   scrollbar-width: thin;
   scrollbar-color: var(--site-red) #0a0a0a;
   overscroll-behavior: contain;
+}
+
+/* Research page: same red scrollbar on the document itself */
+html:has(.research-page),
+body:has(.research-page) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--site-red) #0a0a0a;
+}
+
+html:has(.research-page)::-webkit-scrollbar,
+body:has(.research-page)::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html:has(.research-page)::-webkit-scrollbar-track,
+body:has(.research-page)::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-left: 1px solid #1a1a1a;
+}
+
+html:has(.research-page)::-webkit-scrollbar-thumb,
+body:has(.research-page)::-webkit-scrollbar-thumb {
+  background: var(--site-red);
+  border: 2px solid #0a0a0a;
+  border-radius: 999px;
+}
+
+html:has(.research-page)::-webkit-scrollbar-thumb:hover,
+body:has(.research-page)::-webkit-scrollbar-thumb:hover {
+  background: #ff2a2a;
+}
+
+/* Portfolio page owns its own timeline scroller — don't also show a page bar */
+html:has(.portfolio-page),
+body:has(.portfolio-page) {
+  overflow: hidden;
+  height: 100%;
 }
 
 /* Drei Html wrappers can keep stale inline pointer-events across interactivity flips. */
