@@ -1192,17 +1192,13 @@ function StoryProgressNav({ phase, progress }) {
     const nextIndex = Math.min(chapters.length - 1, Math.max(0, currentIndex + direction));
     scrollToStoryLabel(chapters[nextIndex].timelineLabel);
   }, [chapters, highlightIndex, progress, slots]);
-  const activeLabel = expandedChapter != null
-    ? chapters[expandedChapter]?.label
-    : (highlightIndex >= 0 ? chapters[highlightIndex]?.label : null);
-
   return (
     <nav
       style={{ zIndex: 11 }}
-      className="pointer-events-auto absolute left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] -translate-x-1/2 sm:left-auto sm:right-5 sm:top-1/2 sm:translate-x-0 sm:-translate-y-1/2"
+      className="pointer-events-auto absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-5 sm:top-1/2 sm:translate-x-0 sm:-translate-y-1/2"
       aria-label="Story chapters"
     >
-      <div className="relative flex h-11 w-[min(92vw,360px)] flex-row items-center justify-between rounded-full border border-white/10 bg-gradient-to-r from-white/12 via-black/55 to-black/35 px-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl sm:h-[min(52vh,360px)] sm:min-h-56 sm:w-11 sm:flex-col sm:bg-gradient-to-b sm:px-0 sm:py-3">
+      <div className="relative flex h-11 w-[min(86vw,320px)] flex-row items-center justify-between rounded-full border border-white/10 bg-gradient-to-r from-white/12 via-black/55 to-black/35 px-3 text-white shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl sm:h-[min(52vh,360px)] sm:min-h-56 sm:w-11 sm:flex-col sm:bg-gradient-to-b sm:px-0 sm:py-3">
         <div
           ref={railRef}
           onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); handleRailPointer(event); }}
@@ -1258,23 +1254,22 @@ function StoryProgressNav({ phase, progress }) {
           );
         })}
       </div>
-      {isMobileNav && activeLabel ? (
-        <p className="pointer-events-none mt-1.5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/70">
-          {activeLabel}
-        </p>
-      ) : null}
     </nav>
   );
 }
 
-function MonitorChromeControls({ fullscreen, onToggleFullscreen, exitHint = false, hint, shortcut }) {
+function MonitorChromeControls({ fullscreen, onToggleFullscreen, exitHint = false, hint, shortcut, clearMobileRail = false }) {
   // One above the monitor Html zIndexRange max (10) so the control stays clickable over the screen.
   const label = hint || (fullscreen ? "Desk view" : "Expand site");
   const key = shortcut || (fullscreen ? "Esc" : "F");
   return (
     <div
       style={{ zIndex: 11 }}
-      className="pointer-events-auto absolute bottom-4 right-4 flex items-center gap-2 pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]"
+      className={`pointer-events-auto absolute right-4 flex items-center gap-2 pr-[env(safe-area-inset-right)] ${
+        clearMobileRail
+          ? "bottom-[calc(4.25rem+env(safe-area-inset-bottom))] sm:bottom-4 sm:pb-[env(safe-area-inset-bottom)]"
+          : "bottom-4 pb-[env(safe-area-inset-bottom)]"
+      }`}
     >
       <div className="group relative">
         <span
@@ -1890,19 +1885,20 @@ export default function ScrollStory() {
         />
       )}
       {storyChromeVisible && <StoryProgressNav phase={phase} progress={navProgress} />}
-      {storyChromeVisible && error && <p className="pointer-events-none absolute bottom-5 right-5 z-40 max-w-xs text-right text-xs text-white/60">Showing bundled portfolio content.</p>}
-      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 right-5 z-40 translate-y-6 text-[9px] text-white/40">Monitor: portgl16 · Polaroid: edoardogalati · Camera: Boxroom_3D · CC BY 4.0</p>}
+      {storyChromeVisible && error && <p className="pointer-events-none absolute bottom-5 right-5 z-40 hidden max-w-xs text-right text-xs text-white/60 sm:block">Showing bundled portfolio content.</p>}
+      {storyChromeVisible && <p className="pointer-events-none absolute bottom-5 right-5 z-40 hidden translate-y-6 text-[9px] text-white/40 sm:block">Monitor: portgl16 · Polaroid: edoardogalati · Camera: Boxroom_3D · CC BY 4.0</p>}
       {(monitorHoldActive && storyChromeVisible) && (
         <MonitorChromeControls
           fullscreen={false}
           onToggleFullscreen={enterMonitorFullscreen}
           hint="Expand site"
           shortcut="F"
+          clearMobileRail
         />
       )}
     </div>
     {storyChromeVisible && (
-      <p className="pointer-events-none fixed bottom-5 left-5 z-40 rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80">
+      <p className="pointer-events-none fixed bottom-5 left-5 z-40 hidden rounded bg-slate-950/90 px-3 py-2 text-xs text-white/80 sm:block">
         Scroll to explore
       </p>
     )}

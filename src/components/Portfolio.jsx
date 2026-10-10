@@ -392,7 +392,9 @@ export default function Portfolio({
   // Phones + short landscape (width often >767 but height is tiny) need one-page scroll.
   const isCompact = useMediaQuery("(max-width: 767px), ((max-height: 540px) and (max-width: 1100px))");
   const isShort = useMediaQuery("(max-height: 540px)");
-  const mobileUnifiedScroll = isCompact && mode === "fullscreen";
+  // Compact page/fullscreen: one scroller so the hero can leave; desktop `/` uses document + nested timeline.
+  const mobileUnifiedScroll = isCompact && (mode === "page" || mode === "fullscreen");
+  const desktopPageScroll = mode === "page" && !mobileUnifiedScroll;
   const { timeline, site, loading, error } = useContent();
   const [activeYear, setActiveYear] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -439,12 +441,15 @@ export default function Portfolio({
     setMonitorOffset(0);
   }, [filter, grouped.years, isMonitor]);
 
-  // Enough trailing space that the last year can become majority-visible.
+  // Trailing space so the last year can become majority-visible — keep it tight to avoid a dead zone.
   useEffect(() => {
     const container = mobileUnifiedScroll ? pageScrollRef.current : timelineContainerRef.current;
     if (!container) return undefined;
     const update = () => {
-      setEndSpacerPx(Math.max(Math.round(container.clientHeight * 0.45), 160));
+      const ratio = mobileUnifiedScroll ? 0.1 : 0.18;
+      const minPx = mobileUnifiedScroll ? 40 : 56;
+      const maxPx = mobileUnifiedScroll ? 96 : 140;
+      setEndSpacerPx(Math.min(maxPx, Math.max(Math.round(container.clientHeight * ratio), minPx)));
       if (!isMonitor) return;
       const content = timelineContentRef.current;
       if (!content) return;
@@ -591,23 +596,35 @@ export default function Portfolio({
     return () => container.removeEventListener("wheel", onWheel);
   }, [mode, modalProject, mobileUnifiedScroll, onBottomOverscroll]);
 
+  // Desktop page: document scroll first (hero → timeline into view), then nested timeline scroll.
   useEffect(() => {
-    if (embedded) return undefined;
+    if (embedded || mobileUnifiedScroll) return undefined;
     const container = timelineContainerRef.current;
     if (!container) return undefined;
     const BOUNDARY = 4;
     const onWheel = (e) => {
-      const { scrollTop, clientHeight, scrollHeight } = container;
+      if (modalOpenRef.current) return;
+      const { scrollTop } = container;
       const atTop = scrollTop <= BOUNDARY;
-      const atBottom = scrollTop + clientHeight >= scrollHeight - BOUNDARY;
-      if ((atBottom && e.deltaY > 0) || (atTop && e.deltaY < 0)) {
+      const maxWin = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+      const winY = window.scrollY || window.pageYOffset;
+      const canPageDown = winY < maxWin - 1;
+      const canPageUp = winY > 1;
+
+      // Pin the hero away first; only then let the nested timeline consume the wheel.
+      if (e.deltaY > 0 && canPageDown) {
+        e.preventDefault();
+        window.scrollBy({ top: e.deltaY, left: 0, behavior: "auto" });
+        return;
+      }
+      if (e.deltaY < 0 && atTop && canPageUp) {
         e.preventDefault();
         window.scrollBy({ top: e.deltaY, left: 0, behavior: "auto" });
       }
     };
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => container.removeEventListener("wheel", onWheel);
-  }, [embedded]);
+  }, [embedded, mobileUnifiedScroll]);
 
   const consumeWheel = useCallback((deltaY, deltaMode = 0) => {
     // Absorb wheel while a detail modal is open so the timeline stays put.
@@ -688,7 +705,8 @@ export default function Portfolio({
     const rect = el.getBoundingClientRect();
     const sectionTop = rect.top - containerRect.top + scrollTop;
     const maxScroll = Math.max(scrollHeight - clientHeight, 0);
-    const stickyClearance = mobileUnifiedScroll ? 72 : 24;
+    // Sticky filter/social chrome clearance after the hero has scrolled away.
+    const stickyClearance = mobileUnifiedScroll ? 96 : desktopPageScroll ? 8 : 24;
     const targetY = Math.min(Math.max(sectionTop - stickyClearance, 0), maxScroll);
 
     const releasePin = () => {
@@ -725,14 +743,55 @@ export default function Portfolio({
   const rootClassName = [
     "relative text-white",
     mobileUnifiedScroll
-      ? `h-full portfolio-scroll ${modalProject ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`
+      ? `${mode === "page" ? "h-dvh" : "h-full"} portfolio-scroll ${
+          modalProject ? "overflow-hidden" : "overflow-y-auto overscroll-contain"
+        }`
       : mode === "page"
-        ? "portfolio-page flex h-dvh flex-col overflow-hidden"
+        ? "portfolio-page min-h-screen overflow-x-hidden"
         : "flex h-full min-h-0 flex-col overflow-hidden",
     className,
   ]
     .filter(Boolean)
     .join(" ");
+
+  // Monitor / fullscreen: flex-locked pane. Desktop page uses document + nested timeline instead.
+  const lockedPane = !mobileUnifiedScroll && embedded;
+
+  const socialLinks = (
+    <>
+      <a
+        href={`mailto:${contactEmail}`}
+        className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
+        style={{ color: ACCENT }}
+        aria-label={`Email ${contactEmail}`}
+      >
+        <Mail className={isShort || mobileUnifiedScroll ? "h-4 w-4" : "h-5 w-5"} />
+        {isShort || mobileUnifiedScroll ? "Email" : contactEmail}
+      </a>
+      {socials.map((social) => {
+        const key = social.id || social.label || social.url;
+        const id = (social.id || "").toLowerCase();
+        const Icon = id === "github" ? Github : id === "linkedin" ? Linkedin : null;
+        return (
+          <a
+            key={key}
+            href={social.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
+            style={{ color: ACCENT }}
+          >
+            {Icon && <Icon className={isShort || mobileUnifiedScroll ? "h-4 w-4" : "h-5 w-5"} />}
+            {isShort || mobileUnifiedScroll ? null : social.label}
+            {(isShort || mobileUnifiedScroll) && !Icon ? social.label : null}
+            {(isShort || mobileUnifiedScroll) && Icon ? (
+              <span className="sr-only">{social.label}</span>
+            ) : null}
+          </a>
+        );
+      })}
+    </>
+  );
 
   return (
     <div
@@ -743,58 +802,34 @@ export default function Portfolio({
       className={rootClassName}
       style={{ backgroundColor: BG, color: FG, fontFamily: "system-ui, sans-serif", ...style }}
     >
+      {/*
+        Full-bleed page (no max-width) so View’s right edge matches fixed SiteNav
+        (right-4 / md:right-8). SiteNav floats; View scrolls up under it.
+      */}
       <header
-        className={`relative z-10 shrink-0 border-b border-neutral-900 px-4 md:px-8 ${
-          isShort ? "py-2.5" : "py-5 md:py-10"
+        className={`relative z-10 border-b border-neutral-900 px-4 md:px-8 ${
+          mobileUnifiedScroll ? "pb-2.5 pt-3" : isShort ? "py-2.5" : "py-5 md:py-10"
         }`}
       >
-        <div className="mx-auto max-w-6xl">
-          {/* Reserve top-right space for the fixed SiteNav. */}
-          <div className="pr-36 md:pr-44">
-            <h1
-              className={`font-semibold tracking-tight text-white ${
-                isShort ? "text-xl leading-tight" : "text-3xl md:text-4xl"
-              }`}
-            >
-              {hero.name || "Akshat Kumar Shahi"}
-            </h1>
-            {hero.tagline && !isShort && (
-              <p className="mt-2 max-w-2xl text-base text-white">{hero.tagline}</p>
-            )}
-          </div>
-          <div
-            className={`flex flex-wrap items-center gap-x-5 gap-y-1 ${
-              isShort ? "mt-1.5 text-sm" : "mt-3 text-base md:mt-4"
+        {/* Clear fixed SiteNav over the name. */}
+        <div className="pr-36 md:pr-44">
+          <h1
+            className={`font-semibold tracking-tight text-white ${
+              mobileUnifiedScroll || isShort ? "text-xl leading-tight" : "text-3xl md:text-4xl"
             }`}
           >
-            <a
-              href={`mailto:${contactEmail}`}
-              className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
-              style={{ color: ACCENT }}
+            {hero.name || "Akshat Kumar Shahi"}
+          </h1>
+          {hero.tagline && !isShort && (
+            <p
+              className={`mt-2 max-w-2xl text-white ${
+                mobileUnifiedScroll ? "text-xs text-neutral-400" : "text-base"
+              }`}
             >
-              <Mail className={isShort ? "h-4 w-4" : "h-5 w-5"} />
-              {isShort ? "Email" : contactEmail}
-            </a>
-            {socials.map((social) => {
-              const key = social.id || social.label || social.url;
-              const id = (social.id || "").toLowerCase();
-              const Icon = id === "github" ? Github : id === "linkedin" ? Linkedin : null;
-              return (
-                <a
-                  key={key}
-                  href={social.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 border-b border-transparent transition-colors hover:border-[#FF0000]"
-                  style={{ color: ACCENT }}
-                >
-                  {Icon && <Icon className={isShort ? "h-4 w-4" : "h-5 w-5"} />}
-                  {social.label}
-                </a>
-              );
-            })}
-          </div>
-          {showSkills && (
+              {hero.tagline}
+            </p>
+          )}
+          {showSkills && !mobileUnifiedScroll && (
             <div className="mt-4 max-w-3xl space-y-1 text-sm leading-relaxed text-neutral-300">
               <div className="mb-1.5 font-mono text-xs uppercase tracking-[0.18em] text-white">
                 Technical Skills
@@ -817,17 +852,38 @@ export default function Portfolio({
       </header>
 
       <div
-        className={`relative z-10 mx-auto flex max-w-6xl gap-6 px-4 md:px-8 ${
-          isShort
-            ? "pb-8 pt-2"
-            : mode === "page"
-              ? "pb-4 pt-3 md:pt-8"
-              : "pb-16 pt-3 md:pt-14"
-        } ${mode === "page" || (embedded && !mobileUnifiedScroll) ? "min-h-0 flex-1" : ""}`}
+        className={`relative z-10 flex gap-6 px-4 md:px-8 ${
+          mobileUnifiedScroll
+            ? "pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3"
+            : isShort
+              ? "pb-8 pt-2"
+              : desktopPageScroll
+                ? "pb-0 pt-3 md:pt-6"
+                : mode === "page"
+                  ? "pb-4 pt-3 md:pt-8"
+                  : "pb-16 pt-3 md:pt-14"
+        } ${lockedPane ? "min-h-0 flex-1" : ""}`}
       >
         <aside className={`w-32 shrink-0 ${isCompact ? "hidden" : "hidden md:block"}`}>
-          <div className={mode === "page" || embedded ? "sticky top-0" : "sticky top-16"}>
-            <div className="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-white">Years</div>
+          <div
+            className={`${desktopPageScroll || embedded ? "sticky top-0" : "sticky top-16"} ${
+              isShort ? "pt-1" : desktopPageScroll ? "pt-0" : "pt-2"
+            }`}
+          >
+            {/* Spacer matches thin socials row so "Years" lines up with "Timeline". */}
+            {desktopPageScroll && (
+              <div
+                className={`mb-0 flex items-center ${isShort ? "min-h-9" : "min-h-10"}`}
+                aria-hidden="true"
+              />
+            )}
+            <div
+              className={`mb-4 flex items-center font-mono text-xs uppercase tracking-[0.18em] text-white ${
+                isShort ? "min-h-9" : "min-h-10"
+              }`}
+            >
+              Years
+            </div>
             <nav className="space-y-0.5 text-sm">
               {grouped.years.map((year) => {
                 const isActive = year === activeYear;
@@ -853,137 +909,210 @@ export default function Portfolio({
           </div>
         </aside>
 
-        <main className={`flex-1 ${mode === "page" || (embedded && !mobileUnifiedScroll) ? "flex min-h-0 flex-col" : ""}`}>
+        <main className={`flex-1 ${lockedPane || desktopPageScroll ? "flex min-h-0 flex-col" : ""}`}>
           <div
-            className={`shrink-0 sticky top-0 z-20 border-b border-neutral-900 ${
-              isShort ? "pb-2 pt-1" : "pb-3 pt-2 md:pb-4"
-            }`}
-            style={{ backgroundColor: BG }}
+            className={
+              desktopPageScroll
+                ? "sticky top-0 z-10 flex h-dvh min-h-0 flex-col"
+                : lockedPane
+                  ? "flex min-h-0 flex-1 flex-col"
+                  : "contents"
+            }
+            style={desktopPageScroll ? { backgroundColor: BG } : undefined}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4">
-              <h2 className={`font-semibold tracking-tight text-white ${isShort ? "text-base" : "text-xl"}`}>
-                Timeline
-              </h2>
-              <div className="flex items-center gap-2">
-                {!isShort && (
-                  <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
-                )}
-                <div className="flex border border-neutral-800 bg-neutral-950/80">
-                  {FILTERS.map((f) => (
-                    <button
-                      key={f.value}
-                      type="button"
-                      onClick={() => handleFilterChange(f.value)}
-                      className={`cursor-pointer border-r border-neutral-800 font-mono uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80 ${
-                        isShort ? "px-2.5 py-1.5 text-[11px]" : "px-3 py-2 text-sm"
-                      }`}
-                      style={{
-                        backgroundColor: filter === f.value ? ACCENT : "transparent",
-                        color: filter === f.value ? BG : FG,
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+            {/*
+              Sticky chrome after hero collapse:
+              1) socials (left) — fixed SiteNav floats in the cleared top-right
+              2) Timeline + View — full-bleed right edge matches SiteNav (px-4 / md:px-8)
+            */}
+            <div
+              className={`z-20 shrink-0 border-b border-neutral-900 ${
+                desktopPageScroll ? "" : mobileUnifiedScroll ? "sticky top-0 z-[65]" : "sticky top-0"
+              } ${isShort ? "pb-2.5" : "pb-3 md:pb-4"}`}
+              style={{ backgroundColor: BG }}
+            >
+              <div
+                className={`flex flex-wrap items-center gap-x-5 gap-y-1 pr-36 md:pr-44 ${
+                  mobileUnifiedScroll
+                    ? "pt-[max(0.35rem,env(safe-area-inset-top))] text-sm"
+                    : isShort
+                      ? "pt-1 text-sm"
+                      : "pt-2 text-base md:pt-3"
+                }`}
+              >
+                {socialLinks}
+              </div>
+
+              <div
+                className={`mt-2 flex flex-wrap items-center justify-between gap-2 md:gap-4 ${
+                  isShort ? "pt-1" : "pt-2"
+                }`}
+              >
+                <h2 className={`font-semibold tracking-tight text-white ${isShort ? "text-base" : "text-xl"}`}>
+                  Timeline
+                </h2>
+                <div className="flex items-center gap-2">
+                  {!isShort && !mobileUnifiedScroll && (
+                    <span className="font-mono text-xs uppercase tracking-wider text-white">View</span>
+                  )}
+                  <div
+                    className="flex border border-neutral-800 bg-neutral-950/80"
+                    role="group"
+                    aria-label="Timeline view"
+                  >
+                    {FILTERS.map((f) => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => handleFilterChange(f.value)}
+                        className={`cursor-pointer border-r border-neutral-800 font-mono uppercase tracking-[0.14em] transition-colors last:border-r-0 hover:bg-neutral-800/80 ${
+                          isShort || mobileUnifiedScroll ? "px-2.5 py-1.5 text-[11px]" : "px-3 py-2 text-sm"
+                        }`}
+                        style={{
+                          backgroundColor: filter === f.value ? ACCENT : "transparent",
+                          color: filter === f.value ? BG : FG,
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-            {isCompact && grouped.years.length > 0 && (
-              <nav
-                className={`portfolio-scroll mt-2 flex gap-1.5 overflow-x-auto pb-1 ${isShort ? "" : "md:hidden"}`}
-                aria-label="Jump to year"
-              >
-                {grouped.years.map((year) => {
-                  const isActive = year === activeYear;
-                  return (
-                    <button
-                      key={year}
-                      type="button"
-                      onClick={() => handleYearClick(year)}
-                      className="shrink-0 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]"
-                      style={{
-                        borderColor: isActive ? ACCENT : "#404040",
-                        color: isActive ? ACCENT : "#ffffff",
-                        backgroundColor: isActive ? "rgba(255,0,0,0.12)" : "transparent",
-                      }}
-                    >
-                      {year}
-                    </button>
-                  );
-                })}
-              </nav>
-            )}
-            {loading && (
-              <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-white">
-                Loading latest content…
-              </div>
-            )}
-            {error && (
-              <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[#FF0000]">
-                Using bundled content. Admin API not reachable.
-              </div>
-            )}
-          </div>
 
-          <div
-            ref={timelineContainerRef}
-            className={`portfolio-scroll relative ${
-              mobileUnifiedScroll
-                ? "mt-3"
-                : modalProject
-                  ? mode === "page" || embedded
-                    ? "mt-3 min-h-0 flex-1 overflow-hidden"
-                    : "mt-6 overflow-hidden"
-                  : mode === "monitor"
-                    ? "mt-3 min-h-0 flex-1 overflow-clip"
-                    : mode === "page" || embedded
-                      ? "mt-3 min-h-0 flex-1 overflow-y-auto"
-                      : "mt-6 overflow-y-auto"
-            }`}
-          >
-            <div className={`absolute bottom-0 left-[10px] top-0 w-px bg-neutral-900 ${isCompact ? "hidden" : "hidden md:block"}`} />
+              {isCompact && grouped.years.length > 0 && (
+                <nav
+                  className={`portfolio-scroll mt-2 flex gap-1.5 overflow-x-auto pb-1 ${
+                    isShort || mobileUnifiedScroll ? "" : "md:hidden"
+                  }`}
+                  aria-label="Jump to year"
+                >
+                  {grouped.years.map((year) => {
+                    const isActive = year === activeYear;
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => handleYearClick(year)}
+                        className="shrink-0 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]"
+                        style={{
+                          borderColor: isActive ? ACCENT : "#404040",
+                          color: isActive ? ACCENT : "#ffffff",
+                          backgroundColor: isActive ? "rgba(255,0,0,0.12)" : "transparent",
+                        }}
+                      >
+                        {year}
+                      </button>
+                    );
+                  })}
+                </nav>
+              )}
+
+              {loading && (
+                <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-white">
+                  Loading latest content…
+                </div>
+              )}
+              {error && (
+                <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[#FF0000]">
+                  Using bundled content. Admin API not reachable.
+                </div>
+              )}
+            </div>
 
             <div
-              ref={timelineContentRef}
-              style={isMonitor ? { transform: `translate3d(0, ${-monitorOffset}px, 0)` } : undefined}
+              ref={timelineContainerRef}
+              className={`portfolio-scroll relative ${
+                mobileUnifiedScroll
+                  ? "mt-3"
+                  : modalProject
+                    ? desktopPageScroll || embedded
+                      ? "mt-3 min-h-0 flex-1 overflow-hidden"
+                      : "mt-6 overflow-hidden"
+                    : mode === "monitor"
+                      ? "mt-3 min-h-0 flex-1 overflow-clip"
+                      : desktopPageScroll || embedded
+                        ? "mt-3 min-h-0 flex-1 overflow-y-auto"
+                        : "mt-6 overflow-y-auto"
+              }`}
             >
-              <div className={isShort ? "space-y-6" : "space-y-10"}>
-                {grouped.years.map((year) => {
-                  const nodesForYear = grouped.groupedMap.get(year) || [];
-                  const yearNodes = nodesForYear.map((node) => (
-                    <TimelineNode
-                      key={node.id}
-                      node={node}
-                      onOpenDetail={setModalProject}
-                      clipMedia={isMonitor}
-                      mediaEnabled={loadMedia}
-                    />
-                  ));
+              <div
+                className={`absolute bottom-0 left-[10px] top-0 w-px bg-neutral-900 ${
+                  isCompact ? "hidden" : "hidden md:block"
+                }`}
+              />
 
-                  return (
-                    <section key={year} id={`year-${year}`} className="scroll-mt-20 md:scroll-mt-6">
-                      <div className="mb-3 flex items-center gap-3">
-                        <div className={`items-center gap-3 ${isCompact ? "hidden" : "hidden md:flex"}`}>
-                          <div
-                            className="h-[9px] w-[9px] border"
-                            style={{
-                              borderColor: year === activeYear ? ACCENT : "#525252",
-                              backgroundColor: year === activeYear ? ACCENT : "transparent",
-                            }}
-                          />
-                          <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
+              <div
+                ref={timelineContentRef}
+                style={isMonitor ? { transform: `translate3d(0, ${-monitorOffset}px, 0)` } : undefined}
+              >
+                <div className={isShort ? "space-y-6" : "space-y-10"}>
+                  {grouped.years.map((year) => {
+                    const nodesForYear = grouped.groupedMap.get(year) || [];
+                    const yearNodes = nodesForYear.map((node) => (
+                      <TimelineNode
+                        key={node.id}
+                        node={node}
+                        onOpenDetail={setModalProject}
+                        clipMedia={isMonitor}
+                        mediaEnabled={loadMedia}
+                      />
+                    ));
+
+                    return (
+                      <section
+                        key={year}
+                        id={`year-${year}`}
+                        className={mobileUnifiedScroll ? "scroll-mt-28" : "scroll-mt-28 md:scroll-mt-6"}
+                      >
+                        <div className="mb-3 flex items-center gap-3">
+                          <div className={`items-center gap-3 ${isCompact ? "hidden" : "hidden md:flex"}`}>
+                            <div
+                              className="h-[9px] w-[9px] border"
+                              style={{
+                                borderColor: year === activeYear ? ACCENT : "#525252",
+                                backgroundColor: year === activeYear ? ACCENT : "transparent",
+                              }}
+                            />
+                            <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
+                              {year}
+                            </div>
+                          </div>
+                          <div className={isCompact ? "block" : "md:hidden"}>
+                            <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">
+                              {year}
+                            </div>
+                          </div>
+                          <div className="h-px flex-1 bg-neutral-900" />
                         </div>
-                        <div className={isCompact ? "block" : "md:hidden"}>
-                          <div className="font-mono text-xs uppercase tracking-[0.18em] text-white">{year}</div>
-                        </div>
-                        <div className="h-px flex-1 bg-neutral-900" />
+                        <div className="space-y-3">{yearNodes}</div>
+                      </section>
+                    );
+                  })}
+                  {showSkills && mobileUnifiedScroll && (
+                    <section className="border-t border-neutral-900 pt-6">
+                      <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                        Technical skills
+                      </h2>
+                      <div className="mt-2 space-y-1 text-sm leading-relaxed text-neutral-300">
+                        {skills.languages && (
+                          <p>
+                            <span className="font-medium text-white">Languages: </span>
+                            {skills.languages}
+                          </p>
+                        )}
+                        {skills.technologies && (
+                          <p>
+                            <span className="font-medium text-white">Technologies: </span>
+                            {skills.technologies}
+                          </p>
+                        )}
                       </div>
-                      <div className="space-y-3">{yearNodes}</div>
                     </section>
-                  );
-                })}
+                  )}
+                </div>
+                <div aria-hidden="true" style={{ height: endSpacerPx }} />
               </div>
-              <div aria-hidden="true" style={{ height: endSpacerPx }} />
             </div>
           </div>
         </main>

@@ -63,7 +63,7 @@ export default function ResearchPage() {
 
   return (
     <main
-      className="research-page min-h-screen px-5 py-10 text-white md:px-8 md:py-14"
+      className="research-page min-h-screen px-5 pb-10 pt-[4.25rem] text-white md:px-8 md:py-14"
       style={{ backgroundColor: BG, color: FG, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
     >
       <div className="mx-auto max-w-3xl">
@@ -84,7 +84,7 @@ export default function ResearchPage() {
               />
             ) : null}
             <div className="min-w-0 flex-1">
-              <h1 className="pr-36 text-3xl font-semibold tracking-tight md:pr-44 md:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight md:pr-44 md:text-4xl">
                 {research.name}
               </h1>
               {research.tagline ? (

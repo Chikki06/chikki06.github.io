@@ -112,11 +112,15 @@ body:has(.research-page)::-webkit-scrollbar-thumb:hover {
   background: #ff2a2a;
 }
 
-/* Portfolio page owns its own timeline scroller — don't also show a page bar */
+/* Portfolio page: hide the short document bar (hero collapse). Timeline keeps .portfolio-scroll. */
 html:has(.portfolio-page),
 body:has(.portfolio-page) {
-  overflow: hidden;
-  height: 100%;
+  scrollbar-width: none;
+}
+
+html:has(.portfolio-page)::-webkit-scrollbar,
+body:has(.portfolio-page)::-webkit-scrollbar {
+  display: none;
 }
 
 /* Drei Html wrappers can keep stale inline pointer-events across interactivity flips. */

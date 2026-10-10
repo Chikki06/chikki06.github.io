@@ -13,8 +13,8 @@ function resolveActive(pathname) {
 }
 
 /**
- * Fixed top-right site nav shared by Portfolio, Research, and 3D.
- * Red underline marks the active route.
+ * Fixed top-right site nav — same viewport anchor on Portfolio, Research, and 3D
+ * so switching routes never jumps the control.
  */
 export default function SiteNav() {
   const pathname = usePathname();
